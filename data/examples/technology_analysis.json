@@ -1,0 +1,88 @@
+{
+  "technology_indicators": {
+    "technical_autonomy": {
+      "score": 80,
+      "evidence": [
+        "E1"
+      ],
+      "rationale": "材料明确描述自主研发的核心算法或技术能力；尚需源代码及权属核验。"
+    },
+    "innovation_capability": {
+      "score": 85,
+      "evidence": [
+        "E1"
+      ],
+      "rationale": "材料命中 3 类创新活动证据；该分值是指标量表输入，不包含最终权重计算。"
+    },
+    "intellectual_property": {
+      "score": 55,
+      "evidence": [
+        "E1"
+      ],
+      "rationale": "已开展专利布局，但相关申请尚未授权，权利稳定性待核验。"
+    },
+    "technical_maturity": {
+      "score": 65,
+      "evidence": [
+        "E3"
+      ],
+      "rationale": "TRL 6：原型已在相关环境完成有限试点，尚未证明规模化能力。"
+    }
+  },
+  "technology_summary": "检索材料显示企业已形成技术研发、知识产权或验证活动记录；以下指标仅基于已提供资料提取，最终技术分由独立评价引擎计算。[E1][E2][E3]",
+  "strengths": [
+    "材料显示已形成自主研发或核心技术积累[E1]",
+    "材料显示已开展知识产权布局[E1]",
+    "材料显示技术原型已进入真实或近真实环境验证[E2]"
+  ],
+  "risks": [
+    "现有验证范围有限，规模化效果需要更多独立样本确认[E2]",
+    "技术效果或交付可能依赖第三方组件及外部环境[E2]",
+    "知识产权仍处于申请或审查阶段，权利稳定性需要持续核验[E1]"
+  ],
+  "evidence": [
+    {
+      "evidence_id": "E1",
+      "document_name": "public_test_company_technology_profile.pdf",
+      "page_number": 1,
+      "chunk_id": "bb97bd5238cd36d1913ab136",
+      "excerpt": "KEHENG PUBLIC TEST MATERIAL\n启衡智造技术有限公司\n技术资料摘要 - 公开测试企业（完全虚构）\n重要声明：本文档为 KeHeng v0.2\n软件测试而创建。企业、产品、人员、专利、客户和测试数据均为虚构，不对应任何真实主体。\n1. 企业与技术概况\n启衡智造技术有限公司是一家完全虚构的工业人工智能测试企业，研发方向为制造业表面缺陷检\n测。公司技术团队共 18 人，其中算法与软件研发人员 12 人。\n核心产品 EdgeVision-X 是一套工业视觉缺陷检测原型平台。材料称平台采用自主研发的轻量化\n缺陷检测算法，包含数据标注、模型训练、边缘推理和结果追溯模块，可部署于普通工业计算机\n。\n2. 研发与知识产权 公开测试 研发团队形成了小样本缺陷增强、边缘模型压缩和异常样本回流三项技术方案。企业已提交- 3\n项发明专利申请，其中 1 项进入实质审查阶段；截至本文档生成时，相关专利均未获得授权。\n现有资料仅包含企业自述和内部测试摘要，未提供源代码审计、专利权利要求对比或独立第三方\n技术鉴定。 完全虚构\n第 1 页",
+      "retrieval_score": 0.2877,
+      "supports": [
+        "risks[2]",
+        "strengths[0]",
+        "strengths[1]",
+        "technology_indicators.innovation_capability",
+        "technology_indicators.intellectual_property",
+        "technology_indicators.technical_autonomy",
+        "technology_summary"
+      ]
+    },
+    {
+      "evidence_id": "E2",
+      "document_name": "public_test_company_technology_profile.pdf",
+      "page_number": 3,
+      "chunk_id": "b85f95bbb9dfcca13a9cb1ad",
+      "excerpt": "KEHENG PUBLIC TEST MATERIAL\n5. 已识别的技术风险\n验证范围风险：当前样本和试点范围有限，仅覆盖两条同类生产线。缺陷召回率由企业内部记录\n，尚未经过第三方验证，规模化效果待验证。\n外部依赖风险：系统效果依赖第三方工业相机、光源和传感器的一致性。环境变化可能导致图像\n分布偏移，现有材料未给出完整的自动校准方案。\n知识产权风险：3 项发明专利均为专利申请，其中 1\n项处于实质审查，均未获得授权。现阶段不能据此判断权利稳定性或自由实施空间。\n工程治理风险：原型尚未提供独立安全测评、生产环境高可用报告和完整灾难恢复演练记录。关\n键研发人员集中度及持续维护能力需要进一步核验。\n6. 建议补充材料\n建议后续提供：原始测试集与测试脚本、第三方复测报告、专利检索与权利要求分析、不同硬件\n环境兼容性记录、模型漂移监控方案，以及规模化部署的资源与成本数据。 公开测试\n本资料仅用于软件测试。任何自动分析结果都必须由具备相应专业能力的人员复核。 -\n完全虚构\n第 3 页",
+      "retrieval_score": 0.2578,
+      "supports": [
+        "risks[0]",
+        "risks[1]",
+        "strengths[2]",
+        "technology_summary"
+      ]
+    },
+    {
+      "evidence_id": "E3",
+      "document_name": "public_test_company_technology_profile.pdf",
+      "page_number": 2,
+      "chunk_id": "c54b1b69da6f31c0c0dc5f16",
+      "excerpt": "KEHENG PUBLIC TEST MATERIAL\n3. 原型与试点验证\n2025 年第四季度，EdgeVision-X\n原型系统在两家虚构制造企业的两条生产线上开展试点。试点材料记录了连续 12\n周运行情况，覆盖金属表面划痕、凹点和污染三类缺陷。\n测试项目 企业内部记录 证据限制\n缺陷召回率 95.2% 仅针对企业提供的固定样本集\n单图推理时间 35 ms 工业计算机与固定相机条件\n连续运行时间 12 周 仅两条同类生产线\n4. 工程化状态\n原型已支持模型版本记录、缺陷图片回溯和离线更新，但尚未完成多工厂规模化复制，也未形成\n标准化交付工具链。试点结果未经独立第三方复测，不能直接推断其他行业、材料或光照条件下\n的表现。 公开测试 团队计划补充不同工件、相机和光源条件下的验证，并建立上线后的模型漂移监控。该计划属于-\n未来安排，不代表相关能力已经完成。\n完全虚构\n第 2 页",
+      "retrieval_score": 0.1866,
+      "supports": [
+        "technology_indicators.technical_maturity",
+        "technology_summary"
+      ]
+    }
+  ]
+}

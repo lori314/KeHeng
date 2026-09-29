@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.9.0",
+  "company_id": "nio",
+  "enterprise_name": "蔚来集团（NIO Inc.）",
+  "industry": "新能源 / 智能电动汽车",
+  "documents": [
+    {
+      "file_name": "sources/annual_report.pdf",
+      "source": "https://www.hkexnews.hk/listedco/listconews/sehk/2025/0409/2025040900011.pdf",
+      "source_organization": "香港交易所披露易（NIO 年报）",
+      "published_at": "2025-04-08",
+      "retrieved_at": "2026-08-23",
+      "file_type": "PDF",
+      "purpose": "Technology/Industry Agent 公开资料案例研究",
+      "status": "downloaded",
+      "sha256": "2dfeeb976b50766c6555b46999519f0f70659756891700291565f8870068bbb3",
+      "error": null
+    }
+  ]
+}

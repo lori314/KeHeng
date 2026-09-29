@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0.0",
+  "source": "Generic indicator definitions. Queries contain no company-specific answer, page number, or source-only phrase.",
+  "query_count": 4,
+  "definitions": {
+    "technical_autonomy": ["企业自主研发、核心技术掌握、关键技术来源与外部依赖", "in-house research and development, proprietary core technology, technology ownership, and external dependencies", "研发体系、核心技术、技术来源、自主可控", "research capability, core technology, technology sources, and internal control"],
+    "innovation_capability": ["研发投入、研发人员、创新成果与产品迭代", "research spending, research staff, innovation output, and product iteration", "研发投入、研发团队、创新成果、技术迭代", "R&D investment, research team, innovation output, and technology iteration"],
+    "intellectual_property": ["专利、软件著作权、知识产权数量、权属与保护", "patents, software copyrights, intellectual property portfolio, ownership, and protection", "专利申请、授权数量、知识产权布局", "patent applications, granted rights, and intellectual-property portfolio"],
+    "technical_maturity": ["原型、测试验证、客户部署、规模化交付与技术风险", "prototypes, testing, customer validation, deployment, scaled delivery, and technical risks", "样机、测试、中试、客户验证、量产与技术风险", "prototype, testing, pilot, customer validation, production, and technical risk"],
+    "market_potential": ["行业需求、市场规模、客户应用、订单与商业化", "industry demand, market size, customer applications, orders, and commercialization", "市场需求、市场规模、应用场景、订单与商业化", "market demand, market size, use cases, orders, and commercialization"],
+    "industry_growth": ["行业增速、市场趋势、需求变化与增长预测", "industry growth, market trends, demand changes, and forecasts", "行业增长、市场趋势、需求变化、增长预测", "industry growth, market trend, demand changes, and forecast"],
+    "competitive_position": ["市场份额、竞争优势、客户地位、行业排名与竞争风险", "market share, competitive advantages, customer position, industry ranking, and competition risks", "市场份额、竞争优势、客户地位、行业排名", "market share, competitive advantage, customer position, and industry ranking"],
+    "policy_environment": ["适用政策、产业规划、补贴支持、监管要求与合规风险", "applicable policy, industrial plans, public support, regulation, and compliance risks", "产业政策、规划、支持措施、监管与合规", "industrial policy, plans, support measures, regulation, and compliance"]
+  }
+}

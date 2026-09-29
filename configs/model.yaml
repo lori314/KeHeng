@@ -1,0 +1,44 @@
+schema_version: "0.1"
+status: skeleton
+description: 模型角色与调用边界配置；v0.1 不启用任何真实模型调用。
+
+# v0.6 extraction mode. Runtime default remains the offline rule baseline.
+agent_mode: rule
+
+extraction:
+  provider: unconfigured
+  model: null
+  prompt_version: v0.6
+  json_mode: true
+  schema_repair_enabled: true
+  max_schema_repairs: 1
+
+runtime:
+  enabled: false
+  provider: unconfigured
+  api_style: openai_compatible
+  base_url: null
+  timeout_seconds: 30
+  max_retries: 1
+  # JSON mode is provider-adapter configuration; it never changes Evaluation.
+
+roles:
+  text_analysis:
+    model: null
+    structured_output_required: true
+  vision:
+    model: null
+    structured_output_required: true
+  embedding:
+    model: null
+    dimensions: null
+
+security:
+  api_key_environment_variable: KEHENG_MODEL_API_KEY
+  allow_sensitive_data_egress: false
+  log_prompt_content: false
+
+notes:
+  - 真实密钥不得写入本文件或版本库。
+  - Mock provider 仅由评测脚本和测试显式注入，不作为正式运行时默认实现。
+  - 启用模型前必须确认数据授权、固定模型版本并完成回归验证。

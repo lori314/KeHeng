@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "case_id": "case_tech_industry_high",
+  "expected_indicators": {
+    "market_potential": {"score": 75, "evidence_required": true},
+    "industry_growth": {"score": 75, "evidence_required": true},
+    "competitive_position": {"score": 70, "evidence_required": true},
+    "policy_environment": {"score": 75, "evidence_required": true}
+  },
+  "expected_industry_score": 73.75,
+  "expected_dimension_scores": {"industry": 73.75},
+  "score_tolerance": 0.01
+}

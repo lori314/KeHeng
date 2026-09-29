@@ -1,0 +1,159 @@
+{
+  "technology_score": 72.75,
+  "dimension_scores": {
+    "innovation": 82.73,
+    "ip": 55.0,
+    "maturity": 65.0
+  },
+  "score_explanation": [
+    {
+      "indicator_id": "technical_autonomy",
+      "indicator_name": "技术自主性",
+      "status": "scored",
+      "input_score": 80.0,
+      "weight": 0.25,
+      "weighted_score": 20.0,
+      "calculation": "80 × 25.00% = 20.00",
+      "indicator_version": "0.3.0",
+      "indicator_set_id": "technology_innovation_v1",
+      "weight_version": "0.3.0",
+      "weight_set_id": "technology_fixed_v1"
+    },
+    {
+      "indicator_id": "innovation_capability",
+      "indicator_name": "创新能力",
+      "status": "scored",
+      "input_score": 85.0,
+      "weight": 0.3,
+      "weighted_score": 25.5,
+      "calculation": "85 × 30.00% = 25.50",
+      "indicator_version": "0.3.0",
+      "indicator_set_id": "technology_innovation_v1",
+      "weight_version": "0.3.0",
+      "weight_set_id": "technology_fixed_v1"
+    },
+    {
+      "indicator_id": "intellectual_property",
+      "indicator_name": "知识产权能力",
+      "status": "scored",
+      "input_score": 55.0,
+      "weight": 0.2,
+      "weighted_score": 11.0,
+      "calculation": "55 × 20.00% = 11.00",
+      "indicator_version": "0.3.0",
+      "indicator_set_id": "technology_innovation_v1",
+      "weight_version": "0.3.0",
+      "weight_set_id": "technology_fixed_v1"
+    },
+    {
+      "indicator_id": "technical_maturity",
+      "indicator_name": "技术成熟度",
+      "status": "scored",
+      "input_score": 65.0,
+      "weight": 0.25,
+      "weighted_score": 16.25,
+      "calculation": "65 × 25.00% = 16.25",
+      "indicator_version": "0.3.0",
+      "indicator_set_id": "technology_innovation_v1",
+      "weight_version": "0.3.0",
+      "weight_set_id": "technology_fixed_v1"
+    }
+  ],
+  "evidence_mapping": [
+    {
+      "indicator_id": "technical_autonomy",
+      "evidence_ids": [
+        "E1"
+      ],
+      "sources": [
+        {
+          "evidence_id": "E1",
+          "document_name": "public_test_company_technology_profile.pdf",
+          "page_number": 1,
+          "chunk_id": "bb97bd5238cd36d1913ab136",
+          "excerpt": "KEHENG PUBLIC TEST MATERIAL\n启衡智造技术有限公司\n技术资料摘要 - 公开测试企业（完全虚构）\n重要声明：本文档为 KeHeng v0.2\n软件测试而创建。企业、产品、人员、专利、客户和测试数据均为虚构，不对应任何真实主体。\n1. 企业与技术概况\n启衡智造技术有限公司是一家完全虚构的工业人工智能测试企业，研发方向为制造业表面缺陷检\n测。公司技术团队共 18 人，其中算法与软件研发人员 12 人。\n核心产品 EdgeVision-X 是一套工业视觉缺陷检测原型平台。材料称平台采用自主研发的轻量化\n缺陷检测算法，包含数据标注、模型训练、边缘推理和结果追溯模块，可部署于普通工业计算机\n。\n2. 研发与知识产权 公开测试 研发团队形成了小样本缺陷增强、边缘模型压缩和异常样本回流三项技术方案。企业已提交- 3\n项发明专利申请，其中 1 项进入实质审查阶段；截至本文档生成时，相关专利均未获得授权。\n现有资料仅包含企业自述和内部测试摘要，未提供源代码审计、专利权利要求对比或独立第三方\n技术鉴定。 完全虚构\n第 1 页",
+          "retrieval_score": 0.2877,
+          "supports": [
+            "risks[2]",
+            "strengths[0]",
+            "strengths[1]",
+            "technology_indicators.innovation_capability",
+            "technology_indicators.intellectual_property",
+            "technology_indicators.technical_autonomy",
+            "technology_summary"
+          ]
+        }
+      ]
+    },
+    {
+      "indicator_id": "innovation_capability",
+      "evidence_ids": [
+        "E1"
+      ],
+      "sources": [
+        {
+          "evidence_id": "E1",
+          "document_name": "public_test_company_technology_profile.pdf",
+          "page_number": 1,
+          "chunk_id": "bb97bd5238cd36d1913ab136",
+          "excerpt": "KEHENG PUBLIC TEST MATERIAL\n启衡智造技术有限公司\n技术资料摘要 - 公开测试企业（完全虚构）\n重要声明：本文档为 KeHeng v0.2\n软件测试而创建。企业、产品、人员、专利、客户和测试数据均为虚构，不对应任何真实主体。\n1. 企业与技术概况\n启衡智造技术有限公司是一家完全虚构的工业人工智能测试企业，研发方向为制造业表面缺陷检\n测。公司技术团队共 18 人，其中算法与软件研发人员 12 人。\n核心产品 EdgeVision-X 是一套工业视觉缺陷检测原型平台。材料称平台采用自主研发的轻量化\n缺陷检测算法，包含数据标注、模型训练、边缘推理和结果追溯模块，可部署于普通工业计算机\n。\n2. 研发与知识产权 公开测试 研发团队形成了小样本缺陷增强、边缘模型压缩和异常样本回流三项技术方案。企业已提交- 3\n项发明专利申请，其中 1 项进入实质审查阶段；截至本文档生成时，相关专利均未获得授权。\n现有资料仅包含企业自述和内部测试摘要，未提供源代码审计、专利权利要求对比或独立第三方\n技术鉴定。 完全虚构\n第 1 页",
+          "retrieval_score": 0.2877,
+          "supports": [
+            "risks[2]",
+            "strengths[0]",
+            "strengths[1]",
+            "technology_indicators.innovation_capability",
+            "technology_indicators.intellectual_property",
+            "technology_indicators.technical_autonomy",
+            "technology_summary"
+          ]
+        }
+      ]
+    },
+    {
+      "indicator_id": "intellectual_property",
+      "evidence_ids": [
+        "E1"
+      ],
+      "sources": [
+        {
+          "evidence_id": "E1",
+          "document_name": "public_test_company_technology_profile.pdf",
+          "page_number": 1,
+          "chunk_id": "bb97bd5238cd36d1913ab136",
+          "excerpt": "KEHENG PUBLIC TEST MATERIAL\n启衡智造技术有限公司\n技术资料摘要 - 公开测试企业（完全虚构）\n重要声明：本文档为 KeHeng v0.2\n软件测试而创建。企业、产品、人员、专利、客户和测试数据均为虚构，不对应任何真实主体。\n1. 企业与技术概况\n启衡智造技术有限公司是一家完全虚构的工业人工智能测试企业，研发方向为制造业表面缺陷检\n测。公司技术团队共 18 人，其中算法与软件研发人员 12 人。\n核心产品 EdgeVision-X 是一套工业视觉缺陷检测原型平台。材料称平台采用自主研发的轻量化\n缺陷检测算法，包含数据标注、模型训练、边缘推理和结果追溯模块，可部署于普通工业计算机\n。\n2. 研发与知识产权 公开测试 研发团队形成了小样本缺陷增强、边缘模型压缩和异常样本回流三项技术方案。企业已提交- 3\n项发明专利申请，其中 1 项进入实质审查阶段；截至本文档生成时，相关专利均未获得授权。\n现有资料仅包含企业自述和内部测试摘要，未提供源代码审计、专利权利要求对比或独立第三方\n技术鉴定。 完全虚构\n第 1 页",
+          "retrieval_score": 0.2877,
+          "supports": [
+            "risks[2]",
+            "strengths[0]",
+            "strengths[1]",
+            "technology_indicators.innovation_capability",
+            "technology_indicators.intellectual_property",
+            "technology_indicators.technical_autonomy",
+            "technology_summary"
+          ]
+        }
+      ]
+    },
+    {
+      "indicator_id": "technical_maturity",
+      "evidence_ids": [
+        "E3"
+      ],
+      "sources": [
+        {
+          "evidence_id": "E3",
+          "document_name": "public_test_company_technology_profile.pdf",
+          "page_number": 2,
+          "chunk_id": "c54b1b69da6f31c0c0dc5f16",
+          "excerpt": "KEHENG PUBLIC TEST MATERIAL\n3. 原型与试点验证\n2025 年第四季度，EdgeVision-X\n原型系统在两家虚构制造企业的两条生产线上开展试点。试点材料记录了连续 12\n周运行情况，覆盖金属表面划痕、凹点和污染三类缺陷。\n测试项目 企业内部记录 证据限制\n缺陷召回率 95.2% 仅针对企业提供的固定样本集\n单图推理时间 35 ms 工业计算机与固定相机条件\n连续运行时间 12 周 仅两条同类生产线\n4. 工程化状态\n原型已支持模型版本记录、缺陷图片回溯和离线更新，但尚未完成多工厂规模化复制，也未形成\n标准化交付工具链。试点结果未经独立第三方复测，不能直接推断其他行业、材料或光照条件下\n的表现。 公开测试 团队计划补充不同工件、相机和光源条件下的验证，并建立上线后的模型漂移监控。该计划属于-\n未来安排，不代表相关能力已经完成。\n完全虚构\n第 2 页",
+          "retrieval_score": 0.1866,
+          "supports": [
+            "technology_indicators.technical_maturity",
+            "technology_summary"
+          ]
+        }
+      ]
+    }
+  ]
+}

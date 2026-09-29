@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "case_id": "case_tech_industry_high",
+  "technology_score": 82.75,
+  "industry_score": 73.75,
+  "overall_score": 79.15,
+  "dimension_scores": {"technology": 82.75, "industry": 73.75},
+  "weights": {"technology": 0.6, "industry": 0.4},
+  "score_tolerance": 0.01
+}

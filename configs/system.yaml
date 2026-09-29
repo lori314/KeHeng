@@ -1,0 +1,33 @@
+schema_version: "0.6"
+status: prototype
+description: 科衡 v0.6 应用级参数模板。
+
+application:
+  name: KeHeng
+  version: 0.6.0
+  environment: development
+
+web:
+  backend_host: 127.0.0.1
+  backend_port: 8000
+  frontend_host: 127.0.0.1
+  frontend_port: 5173
+  allowed_origins:
+    - http://localhost:5173
+    - http://127.0.0.1:5173
+
+workflow:
+  execution_mode: sequential
+  enable_parallel_agents: false
+  enable_external_search: false
+  require_evidence_references: true
+  require_human_review: true
+
+limits:
+  max_upload_files: 1
+  max_upload_mb: 20
+  max_retrieval_top_k: 20
+
+notes:
+  - v0.5/v0.6 分析接口只接受单个、最大 20 MB 的文本型 PDF；抽取默认使用离线规则模式。
+  - 环境差异通过环境变量覆盖，不在本文件保存秘密。

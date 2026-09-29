@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "case_id": "case_tech_low_industry_high",
+  "expected_indicators": {
+    "technical_autonomy": {"score": 35, "evidence_required": true},
+    "innovation_capability": {"score": 55, "evidence_required": true},
+    "intellectual_property": {"score": null, "evidence_required": false},
+    "technical_maturity": {"score": 25, "evidence_required": true}
+  },
+  "expected_technology_score": 39.38,
+  "expected_dimension_scores": {"innovation": 45.91, "ip": null, "maturity": 25.0},
+  "score_tolerance": 0.01
+}

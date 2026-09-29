@@ -1,0 +1,29 @@
+name: offline-checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python-and-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install Python dependencies
+        run: python -m pip install -r backend/requirements-lock.txt
+      - name: Run offline regression set
+        run: python -m unittest tests.test_evaluation_engine tests.test_evaluation_cases tests.test_llm_extraction tests.test_iteration05_schema_repair tests.test_iteration06_config_safety -v
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build

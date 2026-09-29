@@ -1,0 +1,34 @@
+schema_version: "0.3.0"
+status: prototype_review
+description: >-
+  KeHeng v0.3 技术创新能力固定权重。权重只用于公开样例与工程验证，未经专家评审不得用于真实决策。
+
+weight_set:
+  id: technology_fixed_v1
+  method: fixed
+  indicator_set_id: technology_innovation_v1
+  weights:
+    technical_autonomy: 0.25
+    innovation_capability: 0.30
+    intellectual_property: 0.20
+    technical_maturity: 0.25
+
+governance:
+  sum_must_equal: 1.0
+  missing_behavior: renormalize_available_weights
+  human_review_required: true
+  expert_approval_required: true
+  change_record_required: true
+
+extensions:
+  ahp:
+    status: reserved
+    provider_contract: WeightProvider
+    required_capabilities:
+      - pairwise_comparison_matrix
+      - consistency_ratio_validation
+      - versioned_weight_output
+  mcda:
+    status: weighted_sum_baseline
+  trl:
+    status: indicator_input_only

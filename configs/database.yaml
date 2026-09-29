@@ -1,0 +1,29 @@
+schema_version: "0.1"
+status: skeleton
+description: 本地 MVP 数据与文件存储规划；v0.5 尚未创建关系数据库模式。
+
+relational:
+  driver: sqlite
+  url: sqlite:///./runtime/keheng.db
+  authoritative_for:
+    - task_metadata
+    - processing_status
+    - analysis_findings
+    - evaluation_results
+    - report_versions
+
+files:
+  driver: local_filesystem
+  upload_path: ./runtime/uploads
+  derived_path: ./runtime/derived
+
+vector:
+  driver: chroma
+  persistence_path: ./runtime/analysis/knowledge_bases/{task_id}/chroma
+  authoritative: false
+
+notes:
+  - SQLite 是比赛版规划，正式实现前需要设计迁移与访问边界。
+  - v0.5 任务状态仅保存在单个后端进程内，服务重启后不会恢复。
+  - 每个分析任务使用独立 Chroma 目录，并继续通过 task_id 过滤检索。
+  - 原始文件字节不写入 SQLite，向量索引必须能够从权威数据重建。

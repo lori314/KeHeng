@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+backend/.venv/
+
+# Node / Vite
+node_modules/
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*apiKey*.csv
+*.pem
+*.p12
+*.pfx
+*.key
+
+# Runtime data and generated artifacts
+runtime/
+tmp/
+backend/runtime/
+frontend/.vite/
+*.db
+*.sqlite
+*.sqlite3
+
+# Real enterprise source files are retained locally only; keep manifests and
+# download notes in data/real_cases/ for reproducible provenance.
+data/real_cases/**/sources/
+data/real_cases/human_review*.csv
+data/real_cases/iteration*_evidence_confirmations.json
+
+# LaTeX build intermediates (keep paper/main.pdf as the deliverable)
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.log
+paper/*.out
+paper/*.toc
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

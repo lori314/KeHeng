@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "case_id": "case_001",
+  "source_document": "company_profile.pdf",
+  "case_marker": "KH-EVAL-001",
+  "forbidden_case_markers": ["KH-EVAL-002", "KH-EVAL-003"],
+  "required_evidence": [
+    {
+      "evidence_key": "autonomy_and_innovation",
+      "page_number": 1,
+      "contains_all": ["自主研发", "核心算法", "研发团队"]
+    },
+    {
+      "evidence_key": "intellectual_property",
+      "page_number": 2,
+      "contains_all": ["获得授权专利", "软件著作权"]
+    },
+    {
+      "evidence_key": "maturity",
+      "page_number": 3,
+      "contains_all": ["已进入规模化部署", "批量交付"]
+    }
+  ]
+}

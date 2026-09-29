@@ -1,0 +1,62 @@
+schema_version: "0.3.0"
+status: prototype_review
+description: >-
+  KeHeng v0.3 技术创新能力指标集，仅用于公开样例和评价引擎验证。
+  指标分值必须来自带证据的 Technology Agent 结构化输出，最终总分由评价引擎确定性计算。
+
+indicator_set:
+  id: technology_innovation_v1
+  name: 技术创新能力
+  score_range:
+    min: 0
+    max: 100
+  evidence_required: true
+  missing_behavior: mark_unscored_and_renormalize
+  indicators:
+    - id: technical_autonomy
+      name: 技术自主性
+      description: 评价核心技术、算法或工程能力的自主研发程度，以及对外部核心能力的依赖情况。
+      dimension: innovation
+      weight: 0.25
+      score_range: {min: 0, max: 100}
+      evidence_required: true
+    - id: innovation_capability
+      name: 创新能力
+      description: 评价技术方案、算法方法、研发活动及其相对改进所体现的创新能力。
+      dimension: innovation
+      weight: 0.30
+      score_range: {min: 0, max: 100}
+      evidence_required: true
+    - id: intellectual_property
+      name: 知识产权能力
+      description: 评价与核心技术相关的知识产权布局、权利状态及可核验程度，不以数量简单替代质量。
+      dimension: ip
+      weight: 0.20
+      score_range: {min: 0, max: 100}
+      evidence_required: true
+    - id: technical_maturity
+      name: 技术成熟度
+      description: 参考 TRL 证据判断技术从概念、原型、试点到规模化应用的成熟程度。
+      dimension: maturity
+      weight: 0.25
+      score_range: {min: 0, max: 100}
+      evidence_required: true
+
+dimensions:
+  innovation:
+    name: 创新
+    indicators: [technical_autonomy, innovation_capability]
+  ip:
+    name: 知识产权
+    indicators: [intellectual_property]
+  maturity:
+    name: 成熟度
+    indicators: [technical_maturity]
+
+governance:
+  human_review_required: true
+  configuration_version_required: true
+  notes:
+    - 指标分数是基于量表的结构化输入，不是企业价值总分。
+    - 缺失证据的指标不计零分，必须标记未评分并触发人工复核。
+    - TRL 仅用于成熟度参考，不直接等同企业综合价值。

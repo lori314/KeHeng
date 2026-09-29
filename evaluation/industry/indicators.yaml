@@ -1,0 +1,53 @@
+schema_version: "0.7.0"
+status: prototype_review
+description: >-
+  KeHeng v0.7 产业价值指标集。指标只接受 Industry Agent 提供的带 E 编号观察，
+  不使用行业常识补全企业事实。
+
+indicator_set:
+  id: industry_value_v1
+  name: 产业价值
+  score_range: {min: 0, max: 100}
+  evidence_required: true
+  missing_behavior: mark_unscored_and_renormalize
+  indicators:
+    - id: market_potential
+      name: 市场潜力
+      description: 企业资料所支持的市场需求、应用场景、客户、订单或商业化事实。
+      dimension: industry
+      weight: 0.30
+      score_range: {min: 0, max: 100}
+      evidence_required: true
+    - id: industry_growth
+      name: 行业成长性
+      description: 企业资料中可定位的行业规模、增长趋势和需求变化信息。
+      dimension: industry
+      weight: 0.25
+      score_range: {min: 0, max: 100}
+      evidence_required: true
+    - id: competitive_position
+      name: 竞争位置
+      description: 企业资料对市场份额、客户、差异化、壁垒或竞争压力的事实描述。
+      dimension: industry
+      weight: 0.25
+      score_range: {min: 0, max: 100}
+      evidence_required: true
+    - id: policy_environment
+      name: 政策环境
+      description: 企业资料中明确提及的产业规划、政策支持、监管要求或合规约束。
+      dimension: industry
+      weight: 0.20
+      score_range: {min: 0, max: 100}
+      evidence_required: true
+
+dimensions:
+  industry:
+    name: 产业价值
+    indicators: [market_potential, industry_growth, competitive_position, policy_environment]
+
+governance:
+  human_review_required: true
+  configuration_version_required: true
+  notes:
+    - 行业趋势不等同于企业成功，企业事实必须有独立证据。
+    - 缺失证据的指标不按零分处理，按可用权重重新归一化。

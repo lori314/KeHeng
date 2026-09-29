@@ -1,0 +1,315 @@
+{
+  "schema_version": "2.0.0",
+  "source_file": "evaluation\\retrieval_eval_cases.json",
+  "source_sha256": "3fbc59f9b0b4d6d718e5dd8d46b8e06b2ddd38b6c64d68bd318caaca1594145e",
+  "review_source": "docs\\review\\iteration_03_evidence_review.md",
+  "review_type": "AI text review only; no human-confirmed labels added",
+  "cases": [
+    {
+      "case_id": "smic_competitive_position_en",
+      "company_id": "smic",
+      "enterprise_name": "中芯国际集成电路制造有限公司",
+      "indicator": "competitive_position",
+      "domain": "industry",
+      "language": "en",
+      "split": "development",
+      "question": "What disclosed facts describe the company's competitive position in its industry?",
+      "candidate_supports": [
+        {
+          "page_number": 21,
+          "excerpt": "SMIC ranks the second globally and the first among the enterprises in Chinese Mainland.",
+          "group": "position",
+          "legacy_chunk_id": "bf4af6886813338566036b78",
+          "anchor_semantics": "exact_source_quote_anchor"
+        }
+      ],
+      "needs_multiple_chunks": false,
+      "label_status": "candidate_unconfirmed",
+      "pending_reason": "Known Chinese-query/English-report mismatch regression; human must confirm ranking context and exact chunk support.",
+      "evidence_label_version": "v1-preserved-candidate-unconfirmed",
+      "ai_text_review": {
+        "source": "AI text review",
+        "status": "awaiting_human_review",
+        "note": "AI文本复核：保留2024年已公布销售额以及纯晶圆代工企业排名口径；自动定位不等于人工确认。"
+      },
+      "evidence_assessment": {
+        "confirmed_gold": false,
+        "human_confirmed": false,
+        "reviewer": null,
+        "note": "No human confirmation supplied; AI review is not expert gold."
+      },
+      "protocol_v2": {
+        "question_version": "v1 unchanged"
+      }
+    },
+    {
+      "case_id": "smic_intellectual_property_en",
+      "company_id": "smic",
+      "enterprise_name": "中芯国际集成电路制造有限公司",
+      "indicator": "intellectual_property",
+      "domain": "technology",
+      "language": "en",
+      "split": "development",
+      "question": "What verifiable figures describe the company's patent or intellectual-property portfolio?",
+      "candidate_supports": [
+        {
+          "page_number": 21,
+          "excerpt": "Invention patents 614 471 18,216 12,112",
+          "group": "portfolio",
+          "legacy_chunk_id": "b32602425be529ef5089adf3",
+          "anchor_semantics": "exact_source_quote_anchor"
+        }
+      ],
+      "needs_multiple_chunks": false,
+      "label_status": "candidate_unconfirmed",
+      "pending_reason": "Same English-language source regression; confirm table headers and whether annual additions and cumulative totals are represented correctly.",
+      "evidence_label_version": "v1-preserved-candidate-unconfirmed",
+      "ai_text_review": {
+        "source": "AI text review",
+        "status": "awaiting_human_review",
+        "note": "AI文本复核：直接核验PDF表格页的表头和数据列，区分本年新增/累计、申请/授权；不要仅按一行数字下结论。"
+      },
+      "evidence_assessment": {
+        "confirmed_gold": false,
+        "human_confirmed": false,
+        "reviewer": null,
+        "note": "No human confirmation supplied; AI review is not expert gold."
+      },
+      "protocol_v2": {
+        "question_version": "v1 unchanged"
+      }
+    },
+    {
+      "case_id": "nio_intellectual_property_en",
+      "company_id": "nio",
+      "enterprise_name": "NIO Inc.",
+      "indicator": "intellectual_property",
+      "domain": "technology",
+      "language": "en",
+      "split": "development",
+      "question": "What verifiable facts describe the company's intellectual-property assets and protection measures?",
+      "candidate_supports": [
+        {
+          "page_number": 67,
+          "excerpt": "We have invested significant resources to develop our own intellectual property.",
+          "group": "assets",
+          "legacy_chunk_id": "a9c406ba8d113d53b2652f41",
+          "anchor_semantics": "exact_source_quote_anchor"
+        }
+      ],
+      "needs_multiple_chunks": false,
+      "label_status": "candidate_unconfirmed",
+      "pending_reason": "Known Chinese-query/English-report mismatch; confirm this statement is sufficient for the chosen indicator question.",
+      "evidence_label_version": "v1-preserved-candidate-unconfirmed",
+      "ai_text_review": {
+        "source": "AI text review",
+        "status": "awaiting_human_review",
+        "note": "AI文本复核：‘投入大量资源’本身不证明知识产权资产规模；周围关于保密、保密协议及许可安排的保护措施是相关证据。"
+      },
+      "evidence_assessment": {
+        "confirmed_gold": false,
+        "human_confirmed": false,
+        "reviewer": null,
+        "note": "No human confirmation supplied; AI review is not expert gold."
+      },
+      "protocol_v2": {
+        "question_version": "v1 unchanged"
+      }
+    },
+    {
+      "case_id": "estun_intellectual_property_zh",
+      "company_id": "estun",
+      "enterprise_name": "南京埃斯顿自动化股份有限公司",
+      "indicator": "intellectual_property",
+      "domain": "technology",
+      "language": "zh",
+      "split": "development",
+      "question": "年报披露了哪些可核验的专利或知识产权数量？",
+      "candidate_supports": [
+        {
+          "page_number": 15,
+          "excerpt": "截至2024 年12 月31 日，公司共有软件著作425 件； 授权专利590 件，其中发明专利252 件。",
+          "group": "portfolio",
+          "legacy_chunk_id": "b75b68d6c88d77240a01c1ff",
+          "anchor_semantics": "exact_source_quote_anchor"
+        }
+      ],
+      "needs_multiple_chunks": false,
+      "label_status": "candidate_unconfirmed",
+      "pending_reason": "Known p15 retrieval regression; human must confirm that the page text supports the question and that parser chunks preserve the exact span.",
+      "evidence_label_version": "v1-preserved-candidate-unconfirmed",
+      "ai_text_review": {
+        "source": "AI text review",
+        "status": "awaiting_human_review",
+        "note": "AI文本复核：数量事实可定位；需要区分授权、发明、未授权申请，并保留对应日期。"
+      },
+      "evidence_assessment": {
+        "confirmed_gold": false,
+        "human_confirmed": false,
+        "reviewer": null,
+        "note": "No human confirmation supplied; AI review is not expert gold."
+      },
+      "protocol_v2": {
+        "question_version": "v1 unchanged"
+      }
+    },
+    {
+      "case_id": "cambricon_market_potential_zh",
+      "company_id": "cambricon",
+      "enterprise_name": "中科寒武纪科技股份有限公司",
+      "indicator": "market_potential",
+      "domain": "industry",
+      "language": "zh",
+      "split": "heldout",
+      "question": "材料披露了哪些行业需求、市场规模或增长依据？",
+      "candidate_supports": [
+        {
+          "page_number": 16,
+          "excerpt": "Gartner 的报告预测，2027 年，全球人工智能芯片的市场的规模预计将达到1,194 亿美元。",
+          "group": "market_size",
+          "legacy_chunk_id": "67d423c38cf41a380185f2a4",
+          "anchor_semantics": "exact_source_quote_anchor"
+        }
+      ],
+      "needs_multiple_chunks": false,
+      "label_status": "candidate_unconfirmed",
+      "pending_reason": "Heldout candidate; confirm the cited market estimate and distinguish third-party forecast from company fact.",
+      "evidence_label_version": "v1-preserved-candidate-unconfirmed",
+      "ai_text_review": {
+        "source": "AI text review",
+        "status": "awaiting_human_review",
+        "note": "AI文本复核：第三方预测不能表述为已实现的公司事实；核对完整预测句是否进入最终上下文。"
+      },
+      "evidence_assessment": {
+        "confirmed_gold": false,
+        "human_confirmed": false,
+        "reviewer": null,
+        "note": "No human confirmation supplied; AI review is not expert gold."
+      },
+      "protocol_v2": {
+        "question_version": "v1 unchanged"
+      }
+    },
+    {
+      "case_id": "siasun_competitive_position_zh",
+      "company_id": "siasun",
+      "enterprise_name": "沈阳新松机器人自动化股份有限公司",
+      "indicator": "competitive_position",
+      "domain": "industry",
+      "language": "zh",
+      "split": "heldout",
+      "question": "材料披露了哪些可核验的市场份额、竞争优势或客户应用事实？",
+      "candidate_supports": [
+        {
+          "page_number": 23,
+          "excerpt": "大气机械手已全面导入市场，市场份额不断提升",
+          "group": "share",
+          "legacy_chunk_id": "dd7951dedd311ebbe400d09d",
+          "anchor_semantics": "exact_source_quote_anchor"
+        }
+      ],
+      "needs_multiple_chunks": false,
+      "label_status": "candidate_unconfirmed",
+      "pending_reason": "Heldout candidate; phrase is directional and lacks a numeric share, so human should decide whether it supports the question.",
+      "evidence_label_version": "v1-preserved-candidate-unconfirmed",
+      "ai_text_review": {
+        "source": "AI text review",
+        "status": "awaiting_human_review",
+        "note": "AI文本复核：定性份额表述不能推出数值；其他客户应用片段也可能回答现有问题，开放问题下未标注命中应待审。"
+      },
+      "evidence_assessment": {
+        "confirmed_gold": false,
+        "human_confirmed": false,
+        "reviewer": null,
+        "note": "No human confirmation supplied; AI review is not expert gold."
+      },
+      "protocol_v2": {
+        "question_version": "v1 unchanged"
+      }
+    },
+    {
+      "case_id": "catl_policy_environment_zh",
+      "company_id": "catl",
+      "enterprise_name": "宁德时代新能源科技股份有限公司",
+      "indicator": "policy_environment",
+      "domain": "industry",
+      "language": "zh",
+      "split": "heldout",
+      "question": "材料披露了哪些影响该产业的政策措施或监管安排？",
+      "candidate_supports": [
+        {
+          "page_number": 12,
+          "excerpt": "《推动大规模设备更新和消费品以旧换新行动方案》",
+          "group": "policy_examples",
+          "legacy_chunk_id": "212566fa5152714cc13a84a1",
+          "anchor_semantics": "exact_source_quote_anchor"
+        },
+        {
+          "page_number": 13,
+          "excerpt": "《关于推动车网互动规模化应用试点工作的通知》",
+          "group": "policy_examples",
+          "legacy_chunk_id": "79604a9437d6bc14b1528ae7",
+          "anchor_semantics": "exact_source_quote_anchor"
+        }
+      ],
+      "needs_multiple_chunks": true,
+      "label_status": "candidate_unconfirmed",
+      "pending_reason": "Heldout multi-passage candidate; confirm both policies are relevant and that the question requires their joint coverage.",
+      "evidence_label_version": "v1-preserved-candidate-unconfirmed",
+      "ai_text_review": {
+        "source": "AI text review",
+        "status": "awaiting_human_review",
+        "note": "AI文本复核：保留原开放问题；不要求必须同时命中特定两项政策。分别报告已标注政策证据覆盖率与至少一项有效政策证据命中。未标注命中列待审，不当作错误。"
+      },
+      "evidence_assessment": {
+        "confirmed_gold": false,
+        "human_confirmed": false,
+        "reviewer": null,
+        "note": "No human confirmation supplied; AI review is not expert gold."
+      },
+      "protocol_v2": {
+        "question_version": "v1 unchanged",
+        "minimum_relevant_policy_evidence": 1,
+        "separate_labeled_anchor_coverage": true,
+        "unlabeled_returned_evidence_status": "pending_review"
+      }
+    },
+    {
+      "case_id": "catl_technical_autonomy_zh",
+      "company_id": "catl",
+      "enterprise_name": "宁德时代新能源科技股份有限公司",
+      "indicator": "technical_autonomy",
+      "domain": "technology",
+      "language": "zh",
+      "split": "heldout",
+      "question": "材料如何描述企业的研发体系、自主研发或外部技术依赖？",
+      "candidate_supports": [
+        {
+          "page_number": 15,
+          "excerpt": "形成以自主研发为主、外部合作为辅的研发模式",
+          "group": "rd_model",
+          "legacy_chunk_id": "1a7d9d76101c9ee726dd52c6",
+          "anchor_semantics": "exact_source_quote_anchor"
+        }
+      ],
+      "needs_multiple_chunks": false,
+      "label_status": "candidate_unconfirmed",
+      "pending_reason": "Heldout candidate; human should confirm the nuance between in-house R&D and external collaboration.",
+      "evidence_label_version": "v1-preserved-candidate-unconfirmed",
+      "ai_text_review": {
+        "source": "AI text review",
+        "status": "awaiting_human_review",
+        "note": "AI文本复核：包含‘形成以自主研发为主、外部合作为辅的研发模式’的任一等价chunk应接受原文命中；该句不支持‘完全无外部依赖’。"
+      },
+      "evidence_assessment": {
+        "confirmed_gold": false,
+        "human_confirmed": false,
+        "reviewer": null,
+        "note": "No human confirmation supplied; AI review is not expert gold."
+      },
+      "protocol_v2": {
+        "question_version": "v1 unchanged"
+      }
+    }
+  ]
+}

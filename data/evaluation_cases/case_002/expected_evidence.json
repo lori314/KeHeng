@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "case_id": "case_002",
+  "source_document": "company_profile.pdf",
+  "case_marker": "KH-EVAL-002",
+  "forbidden_case_markers": ["KH-EVAL-001", "KH-EVAL-003"],
+  "required_evidence": [
+    {
+      "evidence_key": "insufficient_material_statement",
+      "page_number": 1,
+      "contains_all": ["仅包含企业基本登记信息", "不能支持完整的技术价值评价"]
+    }
+  ]
+}

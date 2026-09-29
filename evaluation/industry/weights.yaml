@@ -1,0 +1,20 @@
+schema_version: "0.7.0"
+status: prototype_review
+description: 产业价值内部固定权重，未经专家评审不得用于真实融资决策。
+
+weight_set:
+  id: industry_fixed_v1
+  method: fixed
+  indicator_set_id: industry_value_v1
+  weights:
+    market_potential: 0.30
+    industry_growth: 0.25
+    competitive_position: 0.25
+    policy_environment: 0.20
+
+governance:
+  sum_must_equal: 1.0
+  missing_behavior: renormalize_available_weights
+  human_review_required: true
+  expert_approval_required: true
+  change_record_required: true

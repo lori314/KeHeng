@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.9.0",
+  "company_id": "siasun",
+  "enterprise_name": "沈阳新松机器人自动化股份有限公司",
+  "industry": "机器人 / 智能制造",
+  "documents": [
+    {
+      "file_name": "sources/annual_report.pdf",
+      "source": "https://static.cninfo.com.cn/finalpage/2025-04-19/1223152070.PDF",
+      "source_organization": "巨潮资讯网（新松法定信息披露）",
+      "published_at": "2025-04-18",
+      "retrieved_at": "2026-08-23",
+      "file_type": "PDF",
+      "purpose": "Technology/Industry Agent 公开资料案例研究",
+      "status": "downloaded",
+      "sha256": "178032bdc38fe00aa2a33dc767db72d920ee49adbde752569a0ea56fa963addf",
+      "error": null
+    }
+  ]
+}

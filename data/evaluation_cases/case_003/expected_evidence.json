@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "case_id": "case_003",
+  "source_document": "company_profile.pdf",
+  "case_marker": "KH-EVAL-003",
+  "forbidden_case_markers": ["KH-EVAL-001", "KH-EVAL-002"],
+  "required_evidence": [
+    {
+      "evidence_key": "future_and_negative_language",
+      "page_number": 1,
+      "contains_all": ["正在研发", "计划量产", "尚未规模化"]
+    },
+    {
+      "evidence_key": "early_concept_only",
+      "page_number": 1,
+      "contains_all": ["仅形成早期技术方案", "早期技术概念判断"]
+    }
+  ]
+}

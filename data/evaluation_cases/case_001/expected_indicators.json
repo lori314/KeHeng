@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "case_id": "case_001",
+  "enterprise_name": "卓越感知科技有限公司",
+  "expected_indicators": {
+    "technical_autonomy": {"score": 80, "evidence_required": true},
+    "innovation_capability": {"score": 85, "evidence_required": true},
+    "intellectual_property": {"score": 80, "evidence_required": true},
+    "technical_maturity": {"score": 85, "evidence_required": true}
+  },
+  "expected_technology_score": 82.75,
+  "expected_dimension_scores": {
+    "innovation": 82.73,
+    "ip": 80.0,
+    "maturity": 85.0
+  },
+  "score_tolerance": 0.001,
+  "constraints": {
+    "expected_scored_indicator_count": 4,
+    "technical_maturity_max": 85,
+    "forbidden_rationale_terms": []
+  }
+}

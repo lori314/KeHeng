@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.9.0",
+  "company_id": "estun",
+  "enterprise_name": "南京埃斯顿自动化股份有限公司",
+  "industry": "机器人 / 工业自动化",
+  "documents": [
+    {
+      "file_name": "sources/annual_report.pdf",
+      "source": "https://static.cninfo.com.cn/finalpage/2025-04-29/1223370517.PDF",
+      "source_organization": "巨潮资讯网（埃斯顿法定信息披露）",
+      "published_at": "2025-04-29",
+      "retrieved_at": "2026-08-23",
+      "file_type": "PDF",
+      "purpose": "Technology/Industry Agent 公开资料案例研究",
+      "status": "downloaded",
+      "sha256": "ccebb48578e1fe9b1a28e185d7fe8d3b61b0e7019a4ba903000724ce13753f35",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.9.0",
+  "company_id": "catl",
+  "enterprise_name": "宁德时代新能源科技股份有限公司",
+  "industry": "新能源 / 动力电池",
+  "documents": [
+    {
+      "file_name": "sources/annual_report.pdf",
+      "source": "https://www.catl.com/uploads/1/file/public/202503/20250317094543_6ig9e0mwng.pdf",
+      "source_organization": "宁德时代官方网站",
+      "published_at": "2025-03-17",
+      "retrieved_at": "2026-08-23",
+      "file_type": "PDF",
+      "purpose": "Technology/Industry Agent 公开资料案例研究",
+      "status": "downloaded",
+      "sha256": "b4f1713d7b821eb076c102711d177fe942ccc2bc8dd171ae5d7a95799a65b0ad",
+      "error": null
+    }
+  ]
+}
