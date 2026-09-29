@@ -62,6 +62,7 @@ class TechnologyPipelineTest(unittest.TestCase):
                 {
                     "technology_indicators",
                     "technology_summary",
+                    "summary_status",
                     "strengths",
                     "risks",
                     "evidence",
