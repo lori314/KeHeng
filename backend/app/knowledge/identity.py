@@ -13,6 +13,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from app.knowledge.contracts import (
     CitationLocator,
+    Company,
     Source,
     SourceType,
     SourceVersion,
@@ -21,6 +22,14 @@ from app.knowledge.contracts import (
 
 class UnstableSourceIdentityError(ValueError):
     """Raised when a source has no durable identifier or content fingerprint."""
+
+
+def company_for_name(enterprise_name: str) -> Company:
+    """Return the shared unresolved company identity for a normalized name."""
+
+    normalized_name = " ".join(unicodedata.normalize("NFKC", enterprise_name).split())
+    digest = hashlib.sha256(normalized_name.casefold().encode("utf-8")).hexdigest()[:32]
+    return Company(company_id=f"co_{digest}", canonical_name=normalized_name)
 
 
 def canonicalize_url(url: str) -> str:

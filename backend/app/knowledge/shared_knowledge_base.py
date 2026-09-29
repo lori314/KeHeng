@@ -84,6 +84,8 @@ class SharedKnowledgeBase:
                 source, source_version, chunks, company=company
             )
             if (
+                outcome.became_current
+                and
                 outcome.previous_current_version_id
                 and outcome.previous_current_version_id
                 != outcome.source_version.source_version_id
@@ -91,9 +93,10 @@ class SharedKnowledgeBase:
                 self._mark_version_not_current(
                     outcome.previous_current_version_id
                 )
-            await self._upsert_current_vectors(
-                outcome.source, outcome.source_version, list(outcome.chunks)
-            )
+            if outcome.became_current:
+                await self._upsert_current_vectors(
+                    outcome.source, outcome.source_version, list(outcome.chunks)
+                )
             return outcome
 
     async def search(

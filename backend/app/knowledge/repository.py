@@ -24,12 +24,13 @@ class VersionUpsertResult:
     chunks: tuple[KnowledgeChunk, ...]
     previous_current_version_id: str | None
     created_new_version: bool
+    became_current: bool
 
 
 class SQLiteKnowledgeRepository:
     """Store logical sources, immutable snapshots and complete chunks in SQLite."""
 
-    schema_version = 1
+    schema_version = 3
 
     def __init__(self, database_path: str | Path) -> None:
         self.database_path = Path(database_path).expanduser().resolve()
@@ -105,6 +106,29 @@ class SQLiteKnowledgeRepository:
                     ON knowledge_chunks(source_version_id);
                 CREATE INDEX IF NOT EXISTS knowledge_chunks_by_company_layer
                     ON knowledge_chunks(company_id, knowledge_layer);
+                CREATE TABLE IF NOT EXISTS technology_semantic_profiles (
+                    profile_id TEXT PRIMARY KEY,
+                    company_id TEXT NOT NULL,
+                    processor_version TEXT NOT NULL,
+                    template_registry_version TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    UNIQUE(company_id, processor_version, template_registry_version)
+                );
+                CREATE INDEX IF NOT EXISTS technology_profiles_by_company
+                    ON technology_semantic_profiles(company_id, updated_at);
+                CREATE TABLE IF NOT EXISTS technology_finance_profiles (
+                    profile_id TEXT PRIMARY KEY,
+                    company_id TEXT NOT NULL,
+                    technology_profile_id TEXT NOT NULL,
+                    processor_version TEXT NOT NULL,
+                    finance_registry_version TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    UNIQUE(company_id, technology_profile_id, processor_version, finance_registry_version)
+                );
+                CREATE INDEX IF NOT EXISTS technology_finance_profiles_by_company
+                    ON technology_finance_profiles(company_id, updated_at);
                 """
             )
             connection.execute(f"PRAGMA user_version = {self.schema_version}")
@@ -166,11 +190,7 @@ class SQLiteKnowledgeRepository:
             connection.execute(
                 """INSERT INTO sources(source_id, source_type, title, canonical_url, payload_json)
                    VALUES (?, ?, ?, ?, ?)
-                   ON CONFLICT(source_id) DO UPDATE SET
-                     source_type=excluded.source_type,
-                     title=excluded.title,
-                     canonical_url=excluded.canonical_url,
-                     payload_json=excluded.payload_json""",
+                   ON CONFLICT(source_id) DO NOTHING""",
                 (
                     source.source_id,
                     source.source_type.value,
@@ -181,60 +201,81 @@ class SQLiteKnowledgeRepository:
             )
 
             current_row = connection.execute(
-                """SELECT source_version_id FROM source_versions
+                """SELECT source_version_id, payload_json FROM source_versions
                    WHERE source_id = ? AND is_current = 1""",
                 (source.source_id,),
             ).fetchone()
-            previous_current_id = current_row[0] if current_row else None
+            previous_current_id = current_row["source_version_id"] if current_row else None
             existing_version = connection.execute(
-                """SELECT source_version_id, payload_json FROM source_versions
+                """SELECT source_version_id, retrieved_at, supersedes, payload_json
+                   FROM source_versions
                    WHERE source_id = ? AND content_sha256 = ?""",
                 (source.source_id, source_version.content_sha256.lower()),
             ).fetchone()
+            incoming_retrieved_at = source_version.retrieved_at
+            if existing_version is not None:
+                existing_retrieved_at = SourceVersion.model_validate_json(
+                    existing_version["payload_json"]
+                ).retrieved_at
+                if _timestamp(incoming_retrieved_at) < _timestamp(existing_retrieved_at):
+                    incoming_retrieved_at = existing_retrieved_at
+
+            is_same_current_version = (
+                previous_current_id == source_version.source_version_id
+            )
+            became_current = is_same_current_version or current_row is None or (
+                _timestamp(incoming_retrieved_at)
+                >= _timestamp(
+                    SourceVersion.model_validate_json(current_row["payload_json"]).retrieved_at
+                )
+            )
+            existing_supersedes = (
+                existing_version["supersedes"] if existing_version is not None else None
+            )
+            resolved_supersedes = source_version.supersedes or existing_supersedes
+            if (
+                became_current
+                and not is_same_current_version
+                and existing_version is None
+            ):
+                resolved_supersedes = source_version.supersedes or previous_current_id
             resolved_version = source_version.model_copy(
                 update={
-                    "is_current": True,
-                    "supersedes": source_version.supersedes
-                    or (
-                        json.loads(existing_version["payload_json"]).get("supersedes")
-                        if existing_version is not None
-                        else previous_current_id
-                        if previous_current_id != source_version.source_version_id
-                        else None
-                    ),
+                    "retrieved_at": incoming_retrieved_at,
+                    "is_current": became_current,
+                    "supersedes": resolved_supersedes,
                 }
             )
-            old_versions = connection.execute(
-                """SELECT source_version_id, payload_json FROM source_versions
-                   WHERE source_id = ? AND is_current = 1""",
-                (source.source_id,),
-            ).fetchall()
-            for old_version in old_versions:
-                snapshot = json.loads(old_version["payload_json"])
-                snapshot["is_current"] = False
+            if became_current:
+                connection.execute(
+                    """UPDATE sources
+                       SET source_type = ?, title = ?, canonical_url = ?, payload_json = ?
+                       WHERE source_id = ?""",
+                    (
+                        source.source_type.value,
+                        source.title,
+                        source.canonical_url,
+                        source_payload,
+                        source.source_id,
+                    ),
+                )
+            if became_current and previous_current_id != source_version.source_version_id:
                 connection.execute(
                     """UPDATE source_versions
-                       SET is_current = 0, payload_json = ?
-                       WHERE source_version_id = ?""",
-                    (
-                        json.dumps(
-                            snapshot,
-                            ensure_ascii=False,
-                            sort_keys=True,
-                            separators=(",", ":"),
-                        ),
-                        old_version["source_version_id"],
-                    ),
+                       SET is_current = 0,
+                           payload_json = json_set(payload_json, '$.is_current', json('false'))
+                       WHERE source_id = ? AND is_current = 1""",
+                    (source.source_id,),
                 )
             connection.execute(
                 """INSERT INTO source_versions(
                        source_version_id, source_id, content_sha256, retrieved_at,
                        published_at, is_current, supersedes, metadata_json, payload_json
-                   ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(source_id, content_sha256) DO UPDATE SET
                      retrieved_at=excluded.retrieved_at,
                      published_at=excluded.published_at,
-                     is_current=1,
+                     is_current=excluded.is_current,
                      supersedes=source_versions.supersedes,
                      metadata_json=excluded.metadata_json,
                      payload_json=excluded.payload_json""",
@@ -246,6 +287,7 @@ class SQLiteKnowledgeRepository:
                     resolved_version.published_at.isoformat()
                     if resolved_version.published_at
                     else None,
+                    int(became_current),
                     resolved_version.supersedes,
                     _json_payload(resolved_version.metadata),
                     _json_payload(resolved_version),
@@ -285,6 +327,7 @@ class SQLiteKnowledgeRepository:
             chunks=tuple(chunks),
             previous_current_version_id=previous_current_id,
             created_new_version=existing_version is None,
+            became_current=became_current,
         )
 
     def get_source(self, source_id: str) -> Source | None:
@@ -337,6 +380,99 @@ class SQLiteKnowledgeRepository:
                 (source_version_id,),
             ).fetchall()
         return [KnowledgeChunk.model_validate_json(row[0]) for row in rows]
+
+    def list_current_chunks(
+        self, company_id: str, knowledge_layer: str
+    ) -> list[KnowledgeChunk]:
+        """Read current chunks for one company/layer from the SQLite authority."""
+
+        with self._connection() as connection:
+            rows = connection.execute(
+                """SELECT kc.payload_json
+                   FROM knowledge_chunks AS kc
+                   JOIN source_versions AS sv
+                     ON sv.source_version_id = kc.source_version_id
+                   WHERE kc.company_id = ? AND kc.knowledge_layer = ? AND sv.is_current = 1
+                   ORDER BY sv.retrieved_at DESC, kc.chunk_id""",
+                (company_id, knowledge_layer),
+            ).fetchall()
+        return [KnowledgeChunk.model_validate_json(row[0]) for row in rows]
+
+    def save_technology_semantic_profile(self, profile) -> None:
+        """Persist one versioned semantic result for later retrieval."""
+
+        payload = _json_payload(profile)
+        with self._connection() as connection:
+            connection.execute(
+                """INSERT INTO technology_semantic_profiles(
+                       profile_id, company_id, processor_version,
+                       template_registry_version, updated_at, payload_json
+                   ) VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(company_id, processor_version, template_registry_version)
+                   DO UPDATE SET profile_id=excluded.profile_id,
+                                 updated_at=excluded.updated_at,
+                                 payload_json=excluded.payload_json""",
+                (
+                    profile.profile_id,
+                    profile.company_id,
+                    profile.processor_version,
+                    profile.template_registry_version,
+                    profile.created_at.isoformat(),
+                    payload,
+                ),
+            )
+
+    def get_technology_semantic_profile(
+        self,
+        company_id: str,
+        *,
+        processor_version: str | None = None,
+        template_registry_version: str | None = None,
+    ) -> dict | None:
+        conditions = ["company_id = ?"]
+        values: list[str] = [company_id]
+        if processor_version is not None:
+            conditions.append("processor_version = ?")
+            values.append(processor_version)
+        if template_registry_version is not None:
+            conditions.append("template_registry_version = ?")
+            values.append(template_registry_version)
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT payload_json FROM technology_semantic_profiles WHERE "
+                + " AND ".join(conditions)
+                + " ORDER BY updated_at DESC LIMIT 1",
+                values,
+            ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def save_technology_finance_profile(self, profile) -> None:
+        payload = _json_payload(profile)
+        with self._connection() as connection:
+            connection.execute(
+                """INSERT INTO technology_finance_profiles(
+                       profile_id, company_id, technology_profile_id, processor_version,
+                       finance_registry_version, updated_at, payload_json
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(company_id, technology_profile_id, processor_version, finance_registry_version)
+                   DO UPDATE SET profile_id=excluded.profile_id, updated_at=excluded.updated_at,
+                                 payload_json=excluded.payload_json""",
+                (profile.profile_id, profile.company_id, profile.technology_profile_id,
+                 profile.processor_version, profile.finance_registry_version,
+                 profile.created_at.isoformat(), payload),
+            )
+
+    def get_technology_finance_profile(self, company_id: str, *, technology_profile_id: str | None = None,
+                                       processor_version: str | None = None,
+                                       finance_registry_version: str | None = None) -> dict | None:
+        conditions, values = ["company_id = ?"], [company_id]
+        for key, value in (("technology_profile_id", technology_profile_id), ("processor_version", processor_version), ("finance_registry_version", finance_registry_version)):
+            if value is not None:
+                conditions.append(f"{key} = ?")
+                values.append(value)
+        with self._connection() as connection:
+            row = connection.execute("SELECT payload_json FROM technology_finance_profiles WHERE " + " AND ".join(conditions) + " ORDER BY updated_at DESC LIMIT 1", values).fetchone()
+        return json.loads(row[0]) if row else None
 
     def counts(self, source_id: str | None = None) -> dict[str, int]:
         with self._connection() as connection:
@@ -426,3 +562,11 @@ def _json_payload(value: object) -> str:
     if hasattr(value, "model_dump"):
         value = value.model_dump(mode="json")
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _timestamp(value):
+    """Normalize naive and timezone-aware datetimes for arrival ordering."""
+
+    from datetime import timezone
+
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value

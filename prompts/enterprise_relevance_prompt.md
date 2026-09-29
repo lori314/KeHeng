@@ -1,0 +1,1 @@
+判断每个待入库网页是否明确描述已解析的同一企业主体，而不是名称相近的另一家公司、同名品牌或无关行业页面。只使用输入的 resolved_company 与页面 title/url/snippet/raw_content，不根据搜索排名做判断。批量逐页返回一个决策，格式为 {"decisions":[{"status":"relevant|irrelevant|uncertain","url":"输入原 URL","evidence":"页面中支持判断的原文短摘录","reason":"简短理由"}]}。URL 必须原样来自输入。relevant 或 irrelevant 必须提供可在对应页面文本中找到的精确证据；证据不足时选 uncertain。只返回 JSON。

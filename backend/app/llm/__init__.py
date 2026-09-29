@@ -1,4 +1,4 @@
-"""Evidence-grounded LLM extraction contracts and offline adapters."""
+"""Evidence-grounded LLM contracts and shared provider-neutral adapters."""
 
 from app.llm.api_model import OpenAICompatibleHTTPTransport, OpenAICompatibleProvider
 from app.llm.mock import MockLLMProvider
@@ -6,11 +6,16 @@ from app.llm.provider import (
     LLMContextChunk,
     LLMExtractionRequest,
     LLMExtractionResult,
-    LLMIndustryExtractionResult,
     LLMFinding,
     LLMIndicatorExtraction,
+    LLMIndustryExtractionResult,
     LLMProvider,
     LLMProviderError,
+)
+from app.llm.structured import (
+    OpenAICompatibleStructuredModel,
+    StructuredJSONModel,
+    StructuredModelError,
 )
 
 __all__ = [
@@ -25,4 +30,7 @@ __all__ = [
     "MockLLMProvider",
     "OpenAICompatibleProvider",
     "OpenAICompatibleHTTPTransport",
+    "OpenAICompatibleStructuredModel",
+    "StructuredJSONModel",
+    "StructuredModelError",
 ]

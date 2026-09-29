@@ -1,0 +1,24 @@
+registry_id: keheng_technology_standard_references
+registry_version: technology-standard-references.v1
+references:
+  - id: gb_t_37264_2018
+    number: GB/T 37264-2018
+    name: 新材料技术成熟度等级划分及定义
+    scope: 新材料技术成熟度等级术语、划分与判定边界
+    version_status: "2018版；国家标准信息平台检索为现行"
+    source_url: "https://openstd.samr.gov.cn/bzgk/std/newGbInfo?hcno=A7B72E6E8723196B613E409D322868B7"
+    use_boundary: "仅登记书目信息；未收录标准正文，不产生标准条文 citation 或逐条评价。"
+  - id: gb_t_40518_2021
+    number: GB/T 40518-2021
+    name: 航天工程技术成熟度评价指南
+    scope: 航天工程技术成熟度评价的指导范围
+    version_status: "2021版；国家标准信息平台检索为现行"
+    source_url: "https://openstd.samr.gov.cn/bzgk/std/newGbInfo?hcno=E7C36F06682FFF28C571F7B6758DACFB"
+    use_boundary: "仅登记书目信息；未收录标准正文，不产生标准条文 citation 或逐条评价。"
+  - id: iso_16290_2013
+    number: ISO 16290:2013
+    name: Space systems — Definition of the Technology Readiness Levels (TRLs) and their criteria of assessment
+    scope: TRL 定义与评估标准，主要适用于航天系统硬件
+    version_status: "2013版；ISO 页面显示 2024 年复核确认后仍为现行"
+    source_url: "https://www.iso.org/standard/56064.html"
+    use_boundary: "仅登记书目信息；未收录标准正文，不产生标准条文 citation 或逐条评价。"

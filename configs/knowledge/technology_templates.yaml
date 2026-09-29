@@ -1,0 +1,89 @@
+registry_id: keheng_rd_industrialization_templates
+registry_version: technology-templates.v1
+templates:
+  - id: software_ai
+    name: 软件与人工智能
+    important_objects: [算法与模型, 软件系统, 数据集, 算力与部署环境, 软件产品]
+    evidence_types: [technical_paper, benchmark, prototype, software_release, deployment_validation, customer_application, patent]
+    retrieval_hints: [论文与技术报告, benchmark 数据及测试条件, 软件版本与产品文档, 部署场景与验收记录, 客户应用的可核验披露]
+    milestones:
+      - {id: research_prototype, label: 研究原型, fact_type_hints: [prototype, research_prototype]}
+      - {id: benchmark_evaluation, label: 基准测试, fact_type_hints: [benchmark, evaluation]}
+      - {id: production_deployment, label: 生产环境部署, fact_type_hints: [deployment_validation, production_deployment, customer_application]}
+    inference_rules:
+      - fact_type_any: [benchmark, evaluation, technical_paper]
+        allowed_interpretation: "观察到论文或基准测试结果"
+        blocked_inferences: ["当前证据不能证明系统已在生产环境部署", "当前证据不能证明客户持续使用或商业规模"]
+        blocked_claim_markers: [已生产部署, 生产环境部署, 已大规模商用, 大规模商用, 客户持续使用]
+  - id: semiconductor_design
+    name: 集成电路与芯片设计
+    important_objects: [芯片架构, IP与设计工具, 流片样品, 测试验证平台]
+    evidence_types: [chip_design, tapeout, silicon_validation, benchmark, customer_validation, patent]
+    retrieval_hints: [芯片设计与流片公告, 测试平台和测试条件, 流片轮次与样片验证, 量产及良率披露, 客户验证记录]
+    milestones:
+      - {id: design_complete, label: 设计完成, fact_type_hints: [chip_design, design_freeze]}
+      - {id: tapeout, label: 流片, fact_type_hints: [tapeout, chip_tapeout, first_tapeout]}
+      - {id: silicon_validation, label: 硅片验证, fact_type_hints: [silicon_validation, chip_testing]}
+      - {id: volume_production, label: 规模量产, fact_type_hints: [volume_production, stable_yield]}
+    inference_rules:
+      - fact_type_any: [tapeout, chip_tapeout, first_tapeout]
+        allowed_interpretation: "观察到流片里程碑，可支持进入物理实现/验证阶段"
+        blocked_inferences: ["当前证据不能证明已经规模量产", "当前证据不能证明良率稳定", "当前证据不能证明已有客户采购或采用"]
+        blocked_claim_markers: [已量产, 规模量产, 良率稳定, 客户采购, 客户采用]
+  - id: advanced_hardware
+    name: 先进硬件与装备
+    important_objects: [关键部件, 系统集成, 原型样机, 环境与可靠性测试, 制造工艺]
+    evidence_types: [prototype, engineering_test, certification, pilot_line, manufacturing_validation, customer_application]
+    retrieval_hints: [样机和系统测试报告, 环境/可靠性测试条件, 工程化验证记录, 生产线与工艺验证, 客户验收或实际应用记录]
+    milestones:
+      - {id: prototype, label: 原型/样机, fact_type_hints: [prototype, prototype_test]}
+      - {id: engineering_validation, label: 工程验证, fact_type_hints: [engineering_test, environmental_test, certification]}
+      - {id: manufacturing_validation, label: 制造验证, fact_type_hints: [manufacturing_validation, production_line]}
+    inference_rules:
+      - fact_type_any: [prototype, prototype_test, engineering_test]
+        allowed_interpretation: "观察到原型或样机测试"
+        blocked_inferences: ["当前证据不能证明稳定的规模制造能力", "当前证据不能证明批量交付"]
+        blocked_claim_markers: [规模制造, 批量交付, 大规模生产]
+  - id: new_materials
+    name: 新材料
+    important_objects: [材料体系与配方, 制备工艺, 性能测试, 中试线, 批次一致性]
+    evidence_types: [lab_validation, pilot_line, scale_up_validation, batch_consistency, customer_validation, patent, paper]
+    retrieval_hints: [材料成分与工艺披露, 测试方法和性能指标, 中试规模与运行记录, 批次一致性与稳定性, 客户验证和应用记录]
+    milestones:
+      - {id: laboratory_validation, label: 实验室验证, fact_type_hints: [lab_validation, material_testing]}
+      - {id: pilot_line, label: 中试线, fact_type_hints: [pilot_line, pilot_production]}
+      - {id: scale_production, label: 规模化生产, fact_type_hints: [scale_production, batch_consistency]}
+    inference_rules:
+      - fact_type_any: [pilot_line, pilot_production]
+        allowed_interpretation: "观察到中试线或中试运行"
+        blocked_inferences: ["当前证据不能证明规模化量产", "当前证据不能证明批次一致性或持续稳定供货"]
+        blocked_claim_markers: [规模化量产, 大规模量产, 稳定供货]
+  - id: biopharma
+    name: 生物医药与药物研发
+    important_objects: [候选药物, 靶点与作用机制, 临床试验, 生产工艺, 注册审批]
+    evidence_types: [preclinical, clinical_trial, phase_result, regulatory_filing, approval, patent, paper]
+    retrieval_hints: [药物临床登记与阶段, 试验方案和结果, 监管受理/审评公告, 临床阶段转换证据, 获批与商业供应信息]
+    milestones:
+      - {id: preclinical, label: 临床前研究, fact_type_hints: [preclinical, candidate_selection]}
+      - {id: phase_ii, label: II期临床, fact_type_hints: [phase_ii, clinical_phase_ii]}
+      - {id: phase_iii, label: III期临床, fact_type_hints: [phase_iii, clinical_phase_iii]}
+      - {id: marketing_approval, label: 获批上市, fact_type_hints: [marketing_approval, drug_approval]}
+    inference_rules:
+      - fact_type_any: [phase_ii, clinical_phase_ii]
+        allowed_interpretation: "观察到II期临床相关证据"
+        blocked_inferences: ["当前证据不能证明III期临床已完成", "当前证据不能证明药品获批上市"]
+        blocked_claim_markers: [III期已完成, 获批上市, 已上市销售]
+  - id: medical_device
+    name: 医疗器械
+    important_objects: [医疗器械产品, 适用范围, 临床评价, 注册/备案, 质量体系, 医疗机构应用]
+    evidence_types: [prototype, verification_test, clinical_evaluation, registration_certificate, hospital_validation, sales_application]
+    retrieval_hints: [产品注册/备案及适用范围, 检验与临床评价记录, 质量体系核验, 医疗机构试用/采购披露, 持续使用和销售证据]
+    milestones:
+      - {id: prototype_validation, label: 原型与性能验证, fact_type_hints: [prototype, verification_test]}
+      - {id: registration, label: 注册/备案, fact_type_hints: [registration_certificate, device_registration]}
+      - {id: clinical_adoption, label: 临床采用, fact_type_hints: [hospital_validation, clinical_adoption, customer_application]}
+    inference_rules:
+      - fact_type_any: [registration_certificate, device_registration]
+        allowed_interpretation: "观察到注册/备案资质相关证据"
+        blocked_inferences: ["当前证据不能证明商业市场接受度", "当前证据不能证明形成稳定销售或临床采用"]
+        blocked_claim_markers: [市场广泛接受, 临床广泛采用, 稳定销售]

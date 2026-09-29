@@ -1,0 +1,18 @@
+registry_id: keheng_source_type_hosts
+registry_version: source-hosts.v1
+regulatory_hosts:
+  - nfra.gov.cn
+  - csrc.gov.cn
+  - nmpa.gov.cn
+  - samr.gov.cn
+registry_hosts:
+  - gsxt.gov.cn
+patent_hosts:
+  - cnipa.gov.cn
+  - patentscope.wipo.int
+  - patents.google.com
+paper_hosts:
+  - pubmed.ncbi.nlm.nih.gov
+  - arxiv.org
+  - crossref.org
+  - sciencedirect.com

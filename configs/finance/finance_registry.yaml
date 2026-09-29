@@ -1,0 +1,237 @@
+registry_id: keheng_technology_finance
+registry_version: technology-finance.v1
+policy_metadata_only: true
+lifecycle_services:
+  - {id: credit_loan, lifecycle: startup, label: 信用贷款}
+  - {id: risk_sharing_compensation_loan, lifecycle: startup, label: 风险分担/补偿类贷款}
+  - {id: loan_plus_external_direct_investment, lifecycle: startup, label: 贷款+外部直投}
+  - {id: project_loan, lifecycle: growth, label: 项目贷款}
+  - {id: ip_pledge_financing, lifecycle: growth, label: 知识产权质押融资}
+  - {id: technology_contract_financing, lifecycle: growth, label: 技术交易合同融资}
+  - {id: supply_chain_finance, lifecycle: growth, label: 供应链金融}
+  - {id: m_and_a_loan, lifecycle: mature, label: 并购贷款}
+  - {id: comprehensive_financial_services, lifecycle: mature, label: 综合金融服务}
+innovation_dimensions:
+  - {id: rd_expense, label: 研发费用, description: 企业披露的研发费用金额}
+  - {id: rd_intensity, label: 研发费用占营业收入比例, description: 研发投入强度}
+  - {id: rd_personnel, label: 研发人员占比, description: 研发人员数量或占比}
+  - {id: patent_count, label: 发明专利授权, description: 发明专利授权数量或事件}
+  - {id: ip_per_rd_personnel, label: 每百名研发人员知识产权数量, description: 知识产权与研发人员标准指标}
+  - {id: technology_contract_value, label: 技术合同成交额, description: 技术合同成交金额}
+  - {id: revenue, label: 主营业务收入, description: 主营业务收入金额}
+  - {id: revenue_growth, label: 营业收入增长率, description: 营业收入同比或期间增长率}
+  - {id: profitability, label: 净资产利润率, description: 盈利能力相关披露}
+  - {id: science_programs_awards_standards, label: 科技计划/奖励/标准参与情况, description: 科技计划、科技奖励或标准参与事实}
+  - {id: financing, label: 已获得融资金额, description: 已披露融资事件及金额}
+  - {id: technology_qualification, label: 科技相关资质, description: 科技企业相关资质}
+due_diligence_dimensions:
+  - {id: core_business, label: 核心主业与经营情况, description: 经营范围、核心主业、生产经营和规划}
+  - {id: industry, label: 行业情况, description: 借款人所在行业信息}
+  - {id: accounts_receivable, label: 应收账款, description: 应收账款真实财务状况}
+  - {id: accounts_payable, label: 应付账款, description: 应付账款真实财务状况}
+  - {id: inventory, label: 存货, description: 存货真实财务状况}
+  - {id: working_capital_demand, label: 营运资金需求, description: 营运资金总需求信息}
+  - {id: existing_debt, label: 现有融资性负债, description: 现有融资性负债信息}
+  - {id: funding_use, label: 具体资金用途, description: 贷款或资金用途信息}
+  - {id: repayment_source, label: 还款来源, description: 合法还款来源披露}
+  - {id: cash_flow, label: 经营现金流, description: 经营产生的现金流信息}
+  - {id: major_investment_plan, label: 重大投资计划, description: 贷款期内重大投资计划}
+  - {id: collateral, label: 抵质押/担保信息, description: 抵质押物或保证人信息}
+  - {id: financing, label: 已获得融资金额, description: 已披露股权或债权融资事件}
+  - {id: orders, label: 订单, description: 已披露订单、合同订单或采购事实}
+  - {id: customers, label: 客户, description: 已披露客户及验证事实}
+  - {id: production_capacity, label: 生产能力, description: 已披露产能、产线及产量事实}
+  - {id: ip_assets, label: 知识产权资产, description: 已披露专利、软件著作权等知识产权事实}
+  - {id: technology_contract_value, label: 技术合同成交额, description: 已披露技术开发/许可/转让/服务合同金额}
+  - {id: rd_expense, label: 研发费用, description: 已披露的研发费用金额}
+  - {id: rd_intensity, label: 研发费用占营业收入比例, description: 已披露研发投入强度}
+  - {id: rd_personnel, label: 研发人员占比, description: 已披露研发人员人数或占比}
+  - {id: patent_count, label: 专利授权数量, description: 已披露专利授权事件或数量}
+  - {id: revenue, label: 营业收入, description: 已披露营业收入金额}
+  - {id: revenue_growth, label: 营业收入增长率, description: 已披露收入期间增长率}
+  - {id: profitability, label: 盈利能力, description: 已披露净资产利润率或盈利数据}
+scenarios:
+  - {id: technology_commercialization, label: 科技成果转化, subclasses: [proof_of_concept, pilot_maturation, technology_transfer]}
+  - {id: rd_research, label: 科技研发攻关, subclasses: []}
+  - {id: advanced_technology_adoption, label: 先进技术应用, subclasses: []}
+  - {id: technology_services, label: 科技服务, subclasses: []}
+rules:
+  - rule_id: semiconductor_tapeout_validation
+    category: template_mapping
+    title: 芯片流片后的验证观察
+    description: 流片事实关联验证、测试与迭代活动，不能推出量产。
+    applicable_conditions: {template_id: semiconductor_design, milestone_any: [tapeout], financial_dimension_any: [rd_expense, funding_use, major_investment_plan, orders, customers, production_capacity]}
+    output_type: [funding_activity, risk, monitoring]
+    scenario_id: technology_commercialization
+    funding_activities: [后续验证, 测试迭代, 小批量试制准备]
+    risk_theme: technical_validation
+    risk_reason: 已观察到流片，但需继续核验回片测试、硅片验证及客户验证证据。
+    monitoring_nodes:
+      - {node_id: silicon_validation, name: 硅片验证, reason: 核验流片样品的回片测试与性能验证, related_template: semiconductor_design, triggering_milestone_ids: [tapeout], required_evidence_types: [silicon_validation, chip_testing]}
+      - {node_id: customer_validation, name: 客户验证, reason: 核验客户侧适配与验证进展, related_template: semiconductor_design, triggering_milestone_ids: [tapeout], required_evidence_types: [customer_validation]}
+      - {node_id: volume_production, name: 规模生产, reason: 后续核验量产和稳定良率证据, related_template: semiconductor_design, triggering_milestone_ids: [tapeout], required_evidence_types: [volume_production, stable_yield]}
+    gap_dimensions: [cash_flow, existing_debt, funding_use]
+    source_document: 国家金融监督管理总局关于加强科技型企业全生命周期金融服务的通知（金发〔2024〕2号）
+    source_authority: 国家金融监督管理总局
+    source_date: '2024-01-05'
+    source_reference: 生命周期多元金融服务；仅作场景框架参考
+    source_url: https://app.www.gov.cn/govdata/gov/202401/13/511118/article.html
+    use_boundary: 不构成贷款产品推荐、授信判断或量产判断
+    registry_version: technology-finance.v1
+  - rule_id: new_materials_pilot_maturation
+    category: template_mapping
+    title: 新材料中试熟化观察
+    description: 中试事实关联工艺放大、检测和客户验证活动。
+    applicable_conditions: {template_id: new_materials, milestone_any: [pilot_line], financial_dimension_any: [rd_expense, funding_use, major_investment_plan, orders, customers, production_capacity]}
+    output_type: [funding_activity, risk, monitoring]
+    scenario_id: technology_commercialization
+    funding_activities: [中试熟化, 工艺放大, 检测认证, 客户验证]
+    risk_theme: industrialization_validation
+    risk_reason: 已观察到中试相关事实，仍需核验批次一致性、客户验证和稳定生产证据。
+    monitoring_nodes:
+      - {node_id: batch_consistency, name: 批次一致性, reason: 核验中试批次的质量一致性, related_template: new_materials, triggering_milestone_ids: [pilot_line], required_evidence_types: [batch_consistency]}
+      - {node_id: customer_validation, name: 客户验证, reason: 核验目标客户测试与验证记录, related_template: new_materials, triggering_milestone_ids: [pilot_line], required_evidence_types: [customer_validation]}
+      - {node_id: stable_production, name: 稳定生产, reason: 核验持续生产与稳定供货证据, related_template: new_materials, triggering_milestone_ids: [pilot_line], required_evidence_types: [scale_production]}
+    gap_dimensions: [cash_flow, existing_debt, orders, major_investment_plan]
+    source_document: 关于印发《“沪科积分贷”工作指引》的通知
+    source_authority: 上海市科学技术委员会、中国人民银行上海市分行
+    source_date: '2026-09-09'
+    source_reference: 科技成果转化—中试熟化；仅作场景框架参考
+    source_url: https://stcsm.sh.gov.cn/zwgk/kjzc/zcwj/qtzcwj/20260914/9b28fdd5109e433da137237ec37cd75d.html
+    use_boundary: 不构成融资建议或对量产能力的判断
+    registry_version: technology-finance.v1
+  - rule_id: software_ai_productization
+    category: template_mapping
+    title: 软件人工智能产品化观察
+    description: 原型或基准测试与部署、客户使用及持续收入验证相衔接。
+    applicable_conditions: {template_id: software_ai, milestone_any: [research_prototype, benchmark_evaluation], financial_dimension_any: [rd_expense, revenue, orders, customers, funding_use]}
+    output_type: [funding_activity, monitoring]
+    scenario_id: technology_commercialization
+    funding_activities: [产品化, 部署验证, 客户场景适配]
+    monitoring_nodes:
+      - {node_id: production_deployment, name: 生产部署, reason: 核验生产环境部署及验收记录, related_template: software_ai, triggering_milestone_ids: [research_prototype, benchmark_evaluation], required_evidence_types: [deployment_validation, production_deployment]}
+      - {node_id: customer_usage, name: 客户使用, reason: 核验客户实际使用和持续使用情况, related_template: software_ai, triggering_milestone_ids: [research_prototype, benchmark_evaluation], required_evidence_types: [customer_application]}
+      - {node_id: recurring_revenue, name: 持续收入/订单, reason: 核验持续收入或订单证据, related_template: software_ai, triggering_milestone_ids: [research_prototype, benchmark_evaluation], required_evidence_types: [revenue, orders]}
+    gap_dimensions: [revenue, orders, cash_flow]
+    source_document: 科技部办公厅关于印发《“创新积分制”工作指引（2.0版）（全国试行版）》的通知
+    source_authority: 科技部办公厅
+    source_date: '2025-10-28'
+    source_reference: 技术创新与成长经营相关指标；本项目不计算官方总积分
+    source_url: https://www.most.gov.cn/xxgk/xinxifenlei/fdzdgknr/fgzc/gfxwj/gfxwj2025/202510/t20251029_195079.html
+    use_boundary: 不将原型或基准测试解释为生产部署或商业规模
+    registry_version: technology-finance.v1
+  - rule_id: advanced_hardware_engineering
+    category: template_mapping
+    title: 先进硬件工程化观察
+    description: 原型、工程测试与认证和制造验证衔接。
+    applicable_conditions: {template_id: advanced_hardware, milestone_any: [prototype, engineering_validation], financial_dimension_any: [rd_expense, funding_use, major_investment_plan, orders, production_capacity]}
+    output_type: [funding_activity, monitoring]
+    scenario_id: technology_commercialization
+    funding_activities: [工程验证, 检测认证, 制造验证, 客户验收准备]
+    monitoring_nodes:
+      - {node_id: certification, name: 检测认证, reason: 核验相关认证及适用范围, related_template: advanced_hardware, triggering_milestone_ids: [prototype, engineering_validation], required_evidence_types: [certification]}
+      - {node_id: manufacturing_validation, name: 制造验证, reason: 核验制造工艺和生产验证记录, related_template: advanced_hardware, triggering_milestone_ids: [prototype, engineering_validation], required_evidence_types: [manufacturing_validation]}
+      - {node_id: customer_acceptance, name: 客户验收, reason: 核验客户验收或实际应用, related_template: advanced_hardware, triggering_milestone_ids: [prototype, engineering_validation], required_evidence_types: [customer_application]}
+    gap_dimensions: [orders, revenue, collateral]
+    source_document: 国家金融监督管理总局关于加强科技型企业全生命周期金融服务的通知（金发〔2024〕2号）
+    source_authority: 国家金融监督管理总局
+    source_date: '2024-01-05'
+    source_reference: 全生命周期金融服务框架；仅作场景参考
+    source_url: https://app.www.gov.cn/govdata/gov/202401/13/511118/article.html
+    use_boundary: 不构成贷款产品推荐、审批或制造能力结论
+    registry_version: technology-finance.v1
+  - rule_id: biopharma_stage_transition
+    category: template_mapping
+    title: 生物医药研发阶段观察
+    description: 临床阶段证据关联后续阶段、监管申报和研发投入信息核验。
+    applicable_conditions: {template_id: biopharma, milestone_any: [preclinical, phase_ii, phase_iii], financial_dimension_any: [rd_expense, financing, cash_flow, existing_debt]}
+    output_type: [funding_activity, risk, monitoring]
+    scenario_id: rd_research
+    funding_activities: [后续研发阶段, 临床研究, 监管申报准备]
+    risk_theme: development_continuity
+    risk_reason: 研发阶段推进仍需后续临床与监管资料支持，当前记录不推断现金消耗或偿付能力。
+    monitoring_nodes:
+      - {node_id: next_clinical_stage, name: 后续临床阶段, reason: 核验阶段转换及临床试验记录, related_template: biopharma, triggering_milestone_ids: [preclinical, phase_ii, phase_iii], required_evidence_types: [clinical_trial, phase_result]}
+      - {node_id: regulatory_filing, name: 监管申报, reason: 核验监管申报和受理资料, related_template: biopharma, triggering_milestone_ids: [preclinical, phase_ii, phase_iii], required_evidence_types: [regulatory_filing]}
+      - {node_id: rd_funding_continuity, name: 研发投入持续性, reason: 核验已披露研发投入及资金安排事实, related_template: biopharma, triggering_milestone_ids: [preclinical, phase_ii, phase_iii], required_evidence_types: [rd_expense, financing]}
+    gap_dimensions: [rd_expense, financing, cash_flow, existing_debt]
+    source_document: 科技部办公厅关于印发《“创新积分制”工作指引（2.0版）（全国试行版）》的通知
+    source_authority: 科技部办公厅
+    source_date: '2025-10-28'
+    source_reference: 研发费用、融资等标准化信息维度；不计算官方总积分
+    source_url: https://www.most.gov.cn/xxgk/xinxifenlei/fdzdgknr/fgzc/gfxwj/gfxwj2025/202510/t20251029_195079.html
+    use_boundary: 不推断临床成功、现金消耗、信用或偿付能力
+    registry_version: technology-finance.v1
+  - rule_id: medical_device_market_access
+    category: template_mapping
+    title: 医疗器械注册后市场采用观察
+    description: 注册或备案与医院验证、采购销售和持续临床采用区分。
+    applicable_conditions: {template_id: medical_device, milestone_any: [registration, prototype_validation], financial_dimension_any: [orders, revenue, accounts_receivable, customers, cash_flow]}
+    output_type: [funding_activity, monitoring]
+    scenario_id: advanced_technology_adoption
+    funding_activities: [市场准入后的医院验证, 采购验证, 临床应用观察]
+    monitoring_nodes:
+      - {node_id: hospital_validation, name: 医院验证, reason: 核验医院场景验证与试用记录, related_template: medical_device, triggering_milestone_ids: [registration, prototype_validation], required_evidence_types: [hospital_validation]}
+      - {node_id: procurement, name: 采购与销售, reason: 核验采购、销售及回款披露, related_template: medical_device, triggering_milestone_ids: [registration, prototype_validation], required_evidence_types: [sales_application, revenue]}
+      - {node_id: clinical_adoption, name: 持续临床采用, reason: 核验持续临床应用证据, related_template: medical_device, triggering_milestone_ids: [registration, prototype_validation], required_evidence_types: [clinical_adoption]}
+    gap_dimensions: [orders, revenue, accounts_receivable, cash_flow]
+    source_document: 关于印发《“沪科积分贷”工作指引》的通知
+    source_authority: 上海市科学技术委员会、中国人民银行上海市分行
+    source_date: '2026-09-09'
+    source_reference: 先进技术应用方向；仅作场景框架参考
+    source_url: https://stcsm.sh.gov.cn/zwgk/kjzc/zcwj/qtzcwj/20260914/9b28fdd5109e433da137237ec37cd75d.html
+    use_boundary: 不把注册/备案等同于市场接受或稳定销售
+    registry_version: technology-finance.v1
+  - rule_id: technology_services_contracts
+    category: general_scenario
+    title: 技术服务与合同事实
+    description: 已披露的技术合同、客户或订单可关联科技服务场景。
+    applicable_conditions: {financial_dimension_any: [technology_contract_value, orders, customers]}
+    output_type: [funding_activity, monitoring]
+    scenario_id: technology_services
+    funding_activities: [技术服务交付, 合同履约, 应收款项跟踪]
+    monitoring_nodes:
+      - {node_id: contract_delivery, name: 合同履约, reason: 核验合同交付、验收和结算事实, related_template: software_ai, triggering_milestone_ids: [], required_evidence_types: [technology_contract_value, orders]}
+    gap_dimensions: [accounts_receivable, cash_flow, existing_debt]
+    source_document: 关于印发《“沪科积分贷”工作指引》的通知
+    source_authority: 上海市科学技术委员会、中国人民银行上海市分行
+    source_date: '2026-09-09'
+    source_reference: 科技服务及技术交易方向；仅作场景参考
+    source_url: https://stcsm.sh.gov.cn/zwgk/kjzc/zcwj/qtzcwj/20260914/9b28fdd5109e433da137237ec37cd75d.html
+    use_boundary: 只有来源事实支持时才关联场景，不据此判断回款能力
+    registry_version: technology-finance.v1
+registry_catalog:
+  - {registry_id: lifecycle_finance_services, registry_version: lifecycle-services.v1, section: lifecycle_services}
+  - {registry_id: innovation_points_2_dimensions, registry_version: innovation-points-2.v1, section: innovation_dimensions}
+  - {registry_id: technology_finance_scenarios, registry_version: technology-finance-scenarios.v1, section: scenarios}
+  - {registry_id: traditional_bank_due_diligence, registry_version: bank-due-diligence.v1, section: due_diligence_dimensions}
+prohibited_conclusions: [approve, reject, credit_limit, loan_recommendation, credit_risk_rating, repayment_capacity_rating, combined_risk_score]
+source_metadata:
+  - id: lifecycle_services_source
+    source_document: "国家金融监督管理总局关于加强科技型企业全生命周期金融服务的通知（金发〔2024〕2号）"
+    source_authority: 国家金融监督管理总局
+    source_date: '2024-01-05'
+    source_reference: 初创期/成长期/成熟期的科技企业全生命周期金融服务框架
+    source_url: https://app.www.gov.cn/govdata/gov/202401/13/511118/article.html
+    use_boundary: 只记录公开规则摘要，不复制文件正文，不作为企业事实证据
+  - id: innovation_points_2_source
+    source_document: 科技部办公厅关于印发《“创新积分制”工作指引（2.0版）（全国试行版）》的通知
+    source_authority: 科技部办公厅
+    source_date: '2025-10-28'
+    source_reference: 公开指标体系；本项目只用作标准信息维度
+    source_url: https://www.most.gov.cn/xxgk/xinxifenlei/fdzdgknr/fgzc/gfxwj/gfxwj2025/202510/t20251029_195079.html
+    use_boundary: 不据此计算或宣称官方创新积分总分
+  - id: shanghai_tech_finance_source
+    source_document: 关于印发《“沪科积分贷”工作指引》的通知（沪科合〔2026〕16号）
+    source_authority: 上海市科学技术委员会、中国人民银行上海市分行
+    source_date: '2026-09-09'
+    source_reference: 科技成果转化、科技研发攻关、先进技术应用、科技服务四类方向
+    source_url: https://stcsm.sh.gov.cn/zwgk/kjzc/zcwj/qtzcwj/20260914/9b28fdd5109e433da137237ec37cd75d.html
+    use_boundary: 仅登记政策公开场景，不形成产品建议
+  - id: working_capital_rule_source
+    source_document: 流动资金贷款管理办法（国家金融监督管理总局令〔2024〕2号）
+    source_authority: 国家金融监督管理总局
+    source_date: '2024-02-02'
+    source_reference: 尽职调查字段摘要（第十六条等）
+    source_url: https://www.nfra.gov.cn/cn/view/pages/ItemDetail.html?docId=1151066&generaltype=1&itemId=861
+    use_boundary: 用于资料清单，不转换成自动审批算法

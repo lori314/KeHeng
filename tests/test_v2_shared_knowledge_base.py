@@ -2,6 +2,7 @@
 
 import sys
 import tempfile
+import time
 import unittest
 import hashlib
 from datetime import datetime, timezone
@@ -89,7 +90,14 @@ class SharedKnowledgeBaseTest(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         self.kb.close()
-        self.tempdir.cleanup()
+        for attempt in range(5):
+            try:
+                self.tempdir.cleanup()
+                break
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                time.sleep(0.1)
 
     async def test_pdf_adapter_ids_are_stable_across_tasks_and_documents(self):
         digest = "b" * 64
@@ -176,6 +184,43 @@ class SharedKnowledgeBaseTest(unittest.IsolatedAsyncioTestCase):
         )
         results = await self.kb.search(KnowledgeSearchRequest(query="公开技术证据", top_k=10))
         self.assertEqual([item.chunk.text for item in results], [new[2][0].text])
+
+    async def test_late_older_capture_is_saved_without_replacing_current(self):
+        source_current, version_current, chunks_current = web_snapshot(
+            "https://example.com/late", "12点抓取的网页正文新内容", KnowledgeLayer.GENERAL
+        )
+        version_current = version_current.model_copy(
+            update={"retrieved_at": datetime(2026, 9, 1, 12, tzinfo=timezone.utc)}
+        )
+        current_result = await self.kb.upsert_source_version(
+            source_current, version_current, chunks_current
+        )
+
+        source_old, version_old, chunks_old = web_snapshot(
+            "https://example.com/late", "11点抓取的网页正文旧内容", KnowledgeLayer.GENERAL
+        )
+        source_old = source_old.model_copy(update={"title": "更早抓取的页面标题"})
+        version_old = version_old.model_copy(
+            update={"retrieved_at": datetime(2026, 9, 1, 11, tzinfo=timezone.utc)}
+        )
+        old_result = await self.kb.upsert_source_version(
+            source_old, version_old, chunks_old
+        )
+
+        self.assertFalse(old_result.became_current)
+        self.assertEqual(old_result.previous_current_version_id, current_result.source_version.source_version_id)
+        self.assertEqual(
+            self.kb.repository.get_source(source_current.source_id).title,
+            source_current.title,
+        )
+        self.assertFalse(
+            self.kb.repository.get_source_version(version_old.source_version_id).is_current
+        )
+        self.assertTrue(
+            self.kb.repository.get_source_version(version_current.source_version_id).is_current
+        )
+        results = await self.kb.search(KnowledgeSearchRequest(query="网页正文内容", top_k=10))
+        self.assertEqual([item.chunk.text for item in results], [chunks_current[0].text])
 
     async def test_filters_and_search_preserve_full_citation(self):
         enterprise = web_snapshot(

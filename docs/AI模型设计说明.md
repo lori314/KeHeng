@@ -140,6 +140,16 @@ v1.0 为 Provider 增加有限指数退避和错误分类，区分首次成功�
 
 自动指标与专家盲评结合；评测集按行业、企业阶段、资料质量和风险类型分层。数据集与生产资料隔离，并记录样本来源和版本。
 
+## V2 Retrieval Planner（第三阶段）
+
+新增 `prompts/retrieval_planner_prompt.md` 与 `backend/app/research/planner.py`。Retrieval Planner 是专用结构化规划模块，不复用 Technology Agent Prompt，不评估企业优劣或融资/风险，不撰写结论。首轮输入最低只需企业名称，输出企业身份、业务、技术、产品、人员五类候选 query 与信息缺口；提示词明确禁止把模型记忆中的人名、产品名、专利或技术当成事实。
+
+后续输入包括已执行 query、当轮搜索标题和摘要、已验证发现词、缺口与轮数。模型提出的 `discovered_terms` 必须由程序在该轮 Tavily 搜索结果实际标题/摘要/正文中验证；只有包含原企业名和已验证词的 query 才会执行。相同 query 不重复调用。Planner 输出通过 Pydantic contract 校验，schema/JSON 格式错误允许一次修复，仍无效时明确失败。迭代以固定轮数、每轮 query 数、来源上限、Planner 主动停止和无信息增益阈值约束，trace 保存 planner reason 与停止原因；模型不能发起无限 Agent Loop。
+
+Planner 的 OpenAI-compatible JSON adapter 使用现有 `KEHENG_LLM_ENDPOINT`、`KEHENG_LLM_MODEL`、`KEHENG_LLM_API_KEY` 与超时配置；真实调用只由 CLI 显式创建。Tavily Search/Extract 使用标准库 HTTP 与 `KEHENG_TAVILY_API_KEY`，不新增 SDK。API Key 仅驻留运行内存和出站认证请求，不写入模型输出、trace、任务结果、SQLite 或日志。Planner 收到企业名、queries、网页标题/搜索摘要、发现词和缺口，不发送抓取全文；这些信息会发往配置的模型服务。Tavily 接收 query，必要时接收 Extract URL。接入前应在业务部署环境确认外部服务条款、费用/额度和数据出域政策。
+
+搜索摘要可辅助 query 规划与筛选；当没有获取到正文时，若仍有摘要，可按 `content_scope=search_snippet` 低等级标记进入知识库，不能与完整页面正文等同。正文 hash、来源 URL 和页/段 locator 随 SharedKnowledgeBase 保存。第三阶段完成时，尚无基于这些来源的企业价值判断、行业模板选择、金融推理、Chat 或最终报告；第四阶段语义处理见下文。
+
 ## 11. 风险与防护
 
 | 风险 | 防护方向 |
@@ -167,3 +177,36 @@ Provider 支持可关闭的 OpenAI Compatible JSON mode（`response_format.type=
 - 真实模型配对评测允许显式 `--exploratory` 产生诊断输出，但未确认标签必须保留来源，且不得纳入正式准确率。
 - 本地 API transport 自动重试设为 0；每模块最多一次格式修复。鉴权、余额/额度和限流错误会停止同一任务后续模块；连续传输错误停止后续配对。系统调用失败和业务证据不足分别记录。
 - 离线检索主指标改为 PDF 哈希、页码与精确支持原文锚点，报告候选 chunk ID 命中和最终送模型上下文原文覆盖。等价改写仍待人工判断，不属于自动语义支持率。
+
+## V2 Adaptive Technology Knowledge Processing（第四阶段）
+
+结构化 LLM HTTP 边界已从 `research/planner.py` 提取到共享 `backend/app/llm/structured.py`，research 与 semantic 共同使用一个 OpenAI-compatible JSON adapter；各领域步骤独立维护 prompt 和 Pydantic contract，不复制 HTTP Provider。
+
+语义加工顺序为三次分离调用：
+
+1. `prompts/domain_template_classifier_prompt.md`：在当前 GENERAL chunk 限定上下文和 registry ID 白名单内执行多标签科技领域分类及可组合模板选择。模型须为领域和每个模板提供有效 evidence chunk ID；信息不足时输出空标签与缺口。
+2. `prompts/technology_fact_extractor_prompt.md`：按所选模板从 GENERAL 来源抽取原子科技事实；每个事实必须指向一个输入 `source_chunk_id`，时间、量值和标签仅在原文支持时填写。Citation 由应用从原始 KnowledgeChunk 复制。
+3. `prompts/technology_interpreter_prompt.md`：将已构造的 TechnologyFact 与模板 milestone 对照，输出 supported / limited_support / conflict / no_evidence 及 fact ID。系统校验模板、milestone 和 fact ID，并为未返回的模板 milestone 填充 no_evidence。
+
+三步各自最多一次结构修复。无效 registry ID 或 classifier evidence 会使阶段失败；不存在输入中的 extractor source chunk ID 会使该原子事实作废并写处理警告；无效 Interpreter fact ID 会拒绝该次解释。模型输出 Citation 不属于任何阶段契约。
+
+模板规则是项目编写的解释边界，不是外部标准全文。Interpreter 结果不含成熟度或综合分数。应用按模板 fact_type 触发禁止推断约束，向 observation 写入 `blocked_inferences`；若模型 reason 命中模板禁止结论标记，则把状态降为 `limited_support` 并用规则允许的证据范围替换原 reason。例如 `tapeout` 不支持“已量产/良率稳定/客户采购”，benchmark 不支持生产部署，中试线不支持规模量产，II期不支持III期或获批，注册证不支持市场接受。来源质量按确定性类别给出；只有 `snippet_only`/`weak_web` 事实的 supported observation 自动降为 limited_support。
+
+领域 registry 使用《战略性新兴产业分类（2018）》九个顶层领域的代码/名称；模板 registry 目前有 `software_ai`、`semiconductor_design`、`advanced_hardware`、`new_materials`、`biopharma`、`medical_device`。标准 registry 的 GB/T 37264-2018、GB/T 40518-2021、ISO 16290:2013 仅为 reference metadata；原文未入知识库，因此模型不得声称引用标准条款或伪造标准 citation。此阶段不做第三创新点金融推理、授信判断或旧 Evaluation Engine 评分。
+
+显式 CLI 运行时，企业名、当前 GENERAL chunk 正文及 Citation 会发送至环境中配置的模型服务，抽取结果再传入 Interpreter；该模型数据流仅在命令触发时发生，未配置 provider 时零请求退出。运行输出保存在 `runtime/technology_semantic/`，与 SQLite Profile 一样按敏感派生数据管理。
+## V2 第五阶段：科技金融联合推理
+
+新增两套独立 prompt：`financial_fact_extractor_prompt.md` 只抽取来源中明确记载的原子财务/经营事实；`tech_finance_mapper_prompt.md` 只在已由 registry 预筛的候选规则和事实 ID 中选择证据 bundle。两步骤复用共享结构化 LLM adapter 及单次 schema repair policy，不把事实抽取与金融推理混在同一个 prompt。
+
+FinancialFact 输出严格校验字段、标准 financial dimension 和当前输入 chunk ID；Citation、来源质量由程序克隆/计算。映射输出只接受已知 rule/scenario/fact/milestone ID，Observation 类型还必须属于 registry 对应 rule 的 output_type。任一 unsupported ID 或未登记场景会失败关闭。规则配置驱动六个科技模板的规则选择，不把模板映射硬编码为 Python 分支。
+
+金融结论使用 supported / limited_support / conflict / insufficient_evidence 定性状态。`snippet_only` 金融证据使 observation 降级；没有披露的财务信息只生成 gap。Contract 采用 `extra=forbid`，不存在自动审批/拒绝、授信额度、信用评级、偿债能力结论或综合风险分字段；确定性 validator 检查 evidence references 与 registry 白名单。此边界由结构化输出类型、来源 ID 校验和规则关系校验共同保障，并非仅扫描自然语言。
+
+科技阶段与企业生命周期分别建模：stage 来自有来源支持的技术 milestone；本版 enterprise_lifecycle 没有可用企业生命周期分类证据时为 `unknown`，不从 prototype、pilot 或临床阶段推断企业初创/成长/成熟。规则 registry 的来源 URL 和政策摘要只是 metadata，不能作为政策原文 citation。FinancialFact/profile 与其 Citation 一并写入 SQLite，会包含敏感企业资料，应按现有数据出域约束保护。
+
+## V2 第六阶段：迭代研究的身份与相关性模型调用
+
+`backend/app/research/orchestrator.py` 在深度检索前调用 `IdentityResolver`，提示词位于 `prompts/entity_resolver_prompt.md`。输出经严格 Pydantic 契约及应用侧证据检查：身份声明不能脱离本轮检索 URL 和正文；ambiguous 至少包含两个证据绑定候选，unresolved 不允许附带身份声明。身份未解析时不继续研究、不准入网页。
+
+解析成功后，`EnterpriseRelevanceGate` 使用 `prompts/enterprise_relevance_prompt.md` 对非官网页面批量分类为 relevant / irrelevant / uncertain。模型必须逐页返回且不能引入候选集之外的 URL；确定的 relevant/irrelevant 决策须带可在该页找到的证据片段。uncertain 可不带片段，但仍记录判定原因。官网 host 与子域名采用确定性规则跳过相关性模型。结构化输出修复由共享 `complete_contract` 边界处理；验证仍失败会使研究调用失败，不将该批次页面入库。此 gate 不要求网页事实回答生成 citation，也不等同于事实核验或联网搜索质量评测。

@@ -1,0 +1,15 @@
+registry_id: keheng_strategic_emerging_industries
+registry_version: strategic-emerging-2018.v1
+taxonomy: "战略性新兴产业分类（2018）九个顶层领域"
+source: "国家统计局令第23号；本文件只登记顶层代码与名称，不复制分类正文。"
+source_url: "https://www.stats.gov.cn/sj/tjbz/gjtjbz/index_1.html"
+domains:
+  - {id: "1", name: "新一代信息技术产业"}
+  - {id: "2", name: "高端装备制造产业"}
+  - {id: "3", name: "新材料产业"}
+  - {id: "4", name: "生物产业"}
+  - {id: "5", name: "新能源汽车产业"}
+  - {id: "6", name: "新能源产业"}
+  - {id: "7", name: "节能环保产业"}
+  - {id: "8", name: "数字创意产业"}
+  - {id: "9", name: "相关服务业"}
