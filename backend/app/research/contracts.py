@@ -154,6 +154,12 @@ class IterativeResearchResult(BaseModel):
     entity_resolution_status: Literal["resolved", "ambiguous", "unresolved"] = "unresolved"
     resolved_canonical_name: str | None = None
     official_website: str | None = None
+    official_website_initial: str | None = None
+    official_website_enriched_during_research: bool = False
+    official_website_enrichment_round: int | None = None
+    official_website_enrichment_diagnostic: str | None = None
+    official_website_strong_candidate_hosts: list[str] = Field(default_factory=list)
+    official_website_external_candidate_hosts: list[str] = Field(default_factory=list)
     identity_evidence_count: int = 0
     identity_candidates: list[dict[str, Any]] = Field(default_factory=list)
     identity_trace: dict[str, Any] | None = None

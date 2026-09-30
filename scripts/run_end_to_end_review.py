@@ -22,12 +22,14 @@ from app.core.config import Settings, get_settings  # noqa: E402
 from app.finance.registry import FinanceRegistry  # noqa: E402
 from app.finance.processor import TechnologyFinanceProcessor  # noqa: E402
 from app.knowledge.contracts import KnowledgeLayer  # noqa: E402
+from app.knowledge.assertions import EvidenceAssertionProcessor  # noqa: E402
 from app.knowledge.identity import company_for_name  # noqa: E402
 from app.knowledge.semantic.contracts import TechnologySemanticProfile  # noqa: E402
 from app.knowledge.semantic.processor import TechnologyKnowledgeProcessor  # noqa: E402
 from app.knowledge.semantic.extractor import source_quality  # noqa: E402
 from app.knowledge.shared_knowledge_base import SharedKnowledgeBase  # noqa: E402
 from app.llm import OpenAICompatibleStructuredModel  # noqa: E402
+from app.report_v2 import EvidenceFirstReportAssembler  # noqa: E402
 from app.research.orchestrator import IterativeResearchService  # noqa: E402
 from app.research.planner import RetrievalPlanner  # noqa: E402
 from app.research.tavily_provider import TavilySearchProvider  # noqa: E402
@@ -471,6 +473,13 @@ def _entity_review(input_name: str, research_result: dict[str, Any], company: An
         "canonical_name": research_result.get("resolved_canonical_name") or getattr(company, "canonical_name", None),
         "aliases": list(getattr(company, "aliases", []) or []),
         "official_website": research_result.get("official_website") or getattr(company, "official_website", None),
+        "official_website_initial": research_result.get("official_website_initial"),
+        "official_website_final": research_result.get("official_website") or getattr(company, "official_website", None),
+        "official_website_enriched_during_research": research_result.get("official_website_enriched_during_research", False),
+        "official_website_enrichment_round": research_result.get("official_website_enrichment_round"),
+        "official_website_enrichment_diagnostic": research_result.get("official_website_enrichment_diagnostic"),
+        "official_website_strong_candidate_hosts": research_result.get("official_website_strong_candidate_hosts", trace.get("official_website_strong_candidate_hosts", [])),
+        "official_website_external_candidate_hosts": research_result.get("official_website_external_candidate_hosts", trace.get("official_website_external_candidate_hosts", [])),
         "official_website_resolution_source": metadata.get("official_website_resolution_source"),
         "official_website_evidence_url": metadata.get("official_website_evidence_url"),
         "official_website_diagnostic": metadata.get("official_website_diagnostic"),
@@ -485,6 +494,8 @@ def render_review_markdown(review: dict[str, Any]) -> str:
     research = review.get("research", {})
     semantic = review.get("technology_semantic") or {}
     finance = review.get("technology_finance") or {}
+    assertions = review.get("evidence_assertions") or {}
+    evidence_report = review.get("evidence_first_report") or {}
     quality = review.get("quality_checks", {})
     lines = [
         "# KeHeng End-to-End Review", "",
@@ -500,7 +511,10 @@ def render_review_markdown(review: dict[str, Any]) -> str:
         f"- Canonical name: {entity.get('canonical_name')}",
         f"- Aliases: {', '.join(entity.get('aliases', [])) or '无'}",
         f"- Official website: {entity.get('official_website') or '无'}",
+        f"- Official website initial / final: {entity.get('official_website_initial') or '无'} / {entity.get('official_website_final') or '无'}",
+        f"- Enriched during research / round: {entity.get('official_website_enriched_during_research', False)} / {entity.get('official_website_enrichment_round') or '无'}",
         f"- Official website resolution: `{entity.get('official_website_resolution_source') or 'none'}`; evidence: {entity.get('official_website_evidence_url') or '无'}; diagnostic: `{entity.get('official_website_diagnostic') or 'none'}`",
+        f"- Official website discovery: verified `{entity.get('official_website') or '无'}`; strong candidates: `{json.dumps(entity.get('official_website_strong_candidate_hosts', []), ensure_ascii=False)}`; external/unverified candidates: `{json.dumps(entity.get('official_website_external_candidate_hosts', []), ensure_ascii=False)}`; diagnostic: `{entity.get('official_website_enrichment_diagnostic') or entity.get('official_website_diagnostic') or 'none'}`",
         f"- Identity evidence URLs: {', '.join(entity.get('identity_evidence', {}).get('urls', [])) or '无'}", "",
         "## 3. Iterative Research", "",
         f"- Rounds: {research.get('rounds', 0)}",
@@ -512,6 +526,9 @@ def render_review_markdown(review: dict[str, Any]) -> str:
         f"- Relevant / irrelevant / uncertain: {research.get('relevant_source_count', 0)} / {research.get('irrelevant_source_count', 0)} / {research.get('uncertain_source_count', 0)}",
         f"- New / duplicate versions: {research.get('new_versions', 0)} / {research.get('duplicate_versions', 0)}",
         f"- Knowledge chunks added: {research.get('knowledge_chunks_added', 0)}", "",
+        f"- Official-host fast paths: {research.get('official_host_fast_path_count', 0)}",
+        f"- Official website enriched during research: {research.get('official_website_enriched_during_research', False)} (round {research.get('official_website_enrichment_round') or '无'}; diagnostic `{research.get('official_website_enrichment_diagnostic') or 'none'}`)",
+        f"- Official website initial / final: {research.get('official_website_initial') or '无'} / {research.get('official_website') or '无'}", "",
         "### Queries and round trace", "",
     ]
     lines.extend(f"- {query}" for query in research.get("queries_executed", []))
@@ -528,19 +545,33 @@ def render_review_markdown(review: dict[str, Any]) -> str:
         ])
     semantic_execution = review.get("semantic_execution") or {}
     if semantic_execution:
+        classifier_selection = semantic.get("profile", {}).get("classifier_evidence_selection") or semantic.get("profile", {}).get("semantic_evidence_selection") or semantic_execution.get("classifier_evidence_selection") or {
+            "available_chunk_count": semantic_execution.get("available_chunk_count", 0),
+            "selected_chunk_count": semantic_execution.get("selected_chunk_count", 0),
+            "selected_source_count": semantic_execution.get("selected_source_count", 0),
+            "selected_char_count": semantic_execution.get("selected_char_count", 0),
+            "truncated_chunk_count": semantic_execution.get("truncated_chunk_count", 0),
+            "quality_distribution": semantic_execution.get("quality_distribution", {}),
+            "content_scope_distribution": semantic_execution.get("content_scope_distribution", {}),
+            "source_type_distribution": semantic_execution.get("source_type_distribution", {}),
+            "dropped_due_to_budget": semantic_execution.get("dropped_due_to_budget", 0),
+            "dropped_due_to_source_cap": semantic_execution.get("dropped_due_to_source_cap", 0),
+            "dropped_as_duplicate": semantic_execution.get("dropped_as_duplicate", 0),
+        }
+        fact_selection = semantic.get("profile", {}).get("fact_evidence_selection") or semantic_execution.get("fact_evidence_selection", {})
         lines.extend([
             "", "### Semantic evidence selection and fact extraction", "",
             f"- Semantic stage / substage: `{semantic_execution.get('semantic_stage', '')}` / `{semantic_execution.get('semantic_substage', '')}`",
-            f"- Available / selected chunks: {semantic_execution.get('available_chunk_count', 0)} / {semantic_execution.get('selected_chunk_count', 0)}",
-            f"- Selected sources / chars: {semantic_execution.get('selected_source_count', 0)} / {semantic_execution.get('selected_char_count', 0)}",
-            f"- Truncated selected chunks: {semantic_execution.get('truncated_chunk_count', 0)}",
-            f"- Quality distribution: `{json.dumps(semantic_execution.get('quality_distribution', {}), ensure_ascii=False)}`",
-            f"- Content scope distribution: `{json.dumps(semantic_execution.get('content_scope_distribution', {}), ensure_ascii=False)}`",
-            f"- Source type distribution: `{json.dumps(semantic_execution.get('source_type_distribution', {}), ensure_ascii=False)}`",
+            f"- Classifier evidence: {classifier_selection.get('available_chunk_count', 0)} → {classifier_selection.get('selected_chunk_count', 0)} chunks; {classifier_selection.get('selected_source_count', 0)} sources; {classifier_selection.get('selected_char_count', 0)} chars",
+            f"- Classifier quality / content scope / source types: `{json.dumps(classifier_selection.get('quality_distribution', {}), ensure_ascii=False)}` / `{json.dumps(classifier_selection.get('content_scope_distribution', {}), ensure_ascii=False)}` / `{json.dumps(classifier_selection.get('source_type_distribution', {}), ensure_ascii=False)}`",
+            f"- Classifier truncated chunks: {classifier_selection.get('truncated_chunk_count', 0)}",
             f"- Classifier status / evidence: `{semantic_execution.get('classifier_status', 'unknown')}` / {semantic_execution.get('classifier_input_evidence_count', 0)}",
             f"- Classifier invalid refs / dropped templates / downgraded: `{json.dumps(semantic_execution.get('classifier_invalid_evidence_refs', []), ensure_ascii=False)}` / {semantic_execution.get('classifier_dropped_templates', 0)} / {semantic_execution.get('classifier_downgraded', False)}",
             f"- Classifier report: `{json.dumps(semantic_execution.get('classifier_report', {}), ensure_ascii=False)}`",
-            f"- Dropped (budget / source cap / duplicate): {semantic_execution.get('dropped_due_to_budget', 0)} / {semantic_execution.get('dropped_due_to_source_cap', 0)} / {semantic_execution.get('dropped_as_duplicate', 0)}",
+            f"- Classifier dropped (budget / source cap / duplicate): {classifier_selection.get('dropped_due_to_budget', 0)} / {classifier_selection.get('dropped_due_to_source_cap', 0)} / {classifier_selection.get('dropped_as_duplicate', 0)}",
+            f"- Technology fact evidence: {fact_selection.get('available_chunk_count', 0)} → {fact_selection.get('selected_chunk_count', 0)} chunks; positive matches {fact_selection.get('positive_match_candidate_count', 0)} candidates / {fact_selection.get('positive_match_selected_count', 0)} selected; fallback {fact_selection.get('fallback_fill_count', 0)}",
+            f"- Fact evidence sources / chars / quality: {fact_selection.get('selected_source_count', 0)} / {fact_selection.get('selected_char_count', 0)} / `{json.dumps(fact_selection.get('quality_distribution', {}), ensure_ascii=False)}`",
+            f"- Fact evidence templates / score distribution: `{json.dumps(fact_selection.get('selected_template_ids', []), ensure_ascii=False)}` / `{json.dumps(fact_selection.get('positive_match_score_distribution', {}), ensure_ascii=False)}`",
             f"- Fact extraction batches: {semantic_execution.get('fact_extraction_batch_count', 0)}",
             f"- Succeeded / failed batches: {semantic_execution.get('fact_extraction_completed_batches', 0)} / {semantic_execution.get('fact_extraction_failed_batches', 0)}",
             f"- Input chunks covered (successful / total; failed): {semantic_execution.get('fact_extraction_successful_chunks', 0)} / {semantic_execution.get('fact_extraction_input_chunks', 0)}; {semantic_execution.get('fact_extraction_failed_chunks', 0)}",
@@ -619,6 +650,27 @@ def render_review_markdown(review: dict[str, Any]) -> str:
     lines.append(f"- Risk observations: {len(finance.get('risk_observations', []))}")
     lines.append(f"- Monitoring nodes: {len(finance.get('monitoring_nodes', []))}")
     lines.append(f"- Financial gaps: {len(finance.get('financial_information_gaps', []))}")
+    if assertions:
+        lines.extend(["", "## 13. Evidence Assertions", ""])
+        lines.append(f"- Atomic facts / assertions: {assertions.get('atomic_fact_count', 0)} / {assertions.get('assertion_count', 0)}")
+        lines.append(f"- Fact-to-assertion compression ratio: {assertions.get('fact_to_assertion_compression_ratio')}")
+        lines.append(f"- Technology / financial assertions: {assertions.get('technology_assertion_count', 0)} / {assertions.get('financial_assertion_count', 0)}")
+        lines.append(f"- Single-source / multi-source / conflict: {assertions.get('single_source_count', 0)} / {assertions.get('multi_source_support_count', 0)} / {assertions.get('conflict_count', 0)}")
+        lines.append(f"- Distinct-source support distribution (1 / 2 / 3+): `{json.dumps(assertions.get('support_source_distribution', {}), ensure_ascii=False)}`")
+        lines.append(f"- Strongest source quality distribution: `{json.dumps(assertions.get('strongest_source_quality_distribution', {}), ensure_ascii=False)}`")
+    if evidence_report:
+        report = evidence_report.get("summary", {})
+        lines.extend([
+            "", "## Evidence-first report", "",
+            f"- Report JSON: `{evidence_report.get('report_json')}`",
+            f"- Technology milestones: {report.get('milestone_count', 0)}",
+            f"- Technology facts shown: {report.get('technology_facts_shown', 0)} / {report.get('technology_fact_count', 0)}",
+            f"- Financial dimensions: {report.get('financial_dimension_count', 0)}",
+            f"- Financial facts shown: {report.get('financial_facts_shown', 0)} / {report.get('financial_fact_count', 0)}",
+            f"- Funding activities: {report.get('funding_activity_count', 0)}; risks: {report.get('risk_count', 0)}; monitoring nodes: {report.get('monitoring_node_count', 0)}",
+            f"- Financial gaps: {report.get('financial_gap_count', 0)} → {report.get('deduplicated_financial_dimension_count', 0)} dimensions",
+            f"- Semantic gaps shown: {report.get('semantic_gap_count', 0)}",
+        ])
     lines.append(f"- Design findings: `{json.dumps(review.get('design_findings', []), ensure_ascii=False)}`")
     if review.get("finance_execution"):
         lines.extend([
@@ -678,6 +730,7 @@ async def execute_review(args: argparse.Namespace, settings: Settings, run_dir: 
         "research": {},
         "technology_semantic": None,
         "technology_finance": None,
+        "evidence_assertions": None,
         "quality_checks": {},
         "design_findings": [],
         "errors": [],
@@ -705,6 +758,11 @@ async def execute_review(args: argparse.Namespace, settings: Settings, run_dir: 
         research_data["identity_results_count"] = research_service.last_execution_trace.get(
             "identity_results_count", 0
         )
+        research_data["execution_trace"] = dict(research_service.last_execution_trace)
+        research_data["official_host_fast_path_count"] = sum(
+            int((entry.relevance_diagnostics or {}).get("official_host_fast_path_count", 0))
+            for entry in result.trace
+        )
         company_seed = company_for_name(args.enterprise_name)
         company = knowledge_base.repository.get_company(company_seed.company_id or "")
         inventory = build_source_inventory(knowledge_base, company_seed.company_id or "")
@@ -728,6 +786,60 @@ async def execute_review(args: argparse.Namespace, settings: Settings, run_dir: 
             finance_profile = await finance_processor.process_company(company.company_id or "")
             review["finance_execution"] = dict(finance_processor.last_execution_trace)
             review["technology_finance"] = _finance_summary(finance_profile, finance_processor.last_execution_trace)
+            stage = "evidence_assertions"
+            assertion_processor = EvidenceAssertionProcessor(knowledge_base)
+            assertion_profile = assertion_processor.process_company(company.company_id or "")
+            review["assertion_execution"] = dict(assertion_processor.last_execution_trace)
+            source_distribution = Counter()
+            strongest_distribution = Counter()
+            member_quality_distribution = Counter()
+            for assertion in assertion_profile.assertions:
+                source_distribution["1" if assertion.supporting_source_count == 1 else "2" if assertion.supporting_source_count == 2 else "3+"] += 1
+                strongest_distribution[assertion.strongest_source_quality] += 1
+                for quality_name, count in assertion.source_quality_distribution.items():
+                    member_quality_distribution[quality_name] += count
+            atomic_count = len(semantic_profile.technology_facts) + len(finance_profile.financial_facts)
+            assertion_count = len(assertion_profile.assertions)
+            review["evidence_assertions"] = {
+                "profile": _dump(assertion_profile),
+                "atomic_technology_fact_count": len(semantic_profile.technology_facts),
+                "atomic_financial_fact_count": len(finance_profile.financial_facts),
+                "atomic_fact_count": atomic_count,
+                "assertion_count": assertion_count,
+                "technology_assertion_count": assertion_profile.technology_assertion_count,
+                "financial_assertion_count": assertion_profile.financial_assertion_count,
+                "single_source_count": assertion_profile.single_source_count,
+                "multi_source_support_count": assertion_profile.multi_source_support_count,
+                "conflict_count": assertion_profile.conflict_count,
+                "fact_to_assertion_compression_ratio": round(atomic_count / assertion_count, 4) if assertion_count else None,
+                "support_source_distribution": dict(sorted(source_distribution.items())),
+                "strongest_source_quality_distribution": dict(sorted(strongest_distribution.items())),
+                "member_source_quality_distribution": dict(sorted(member_quality_distribution.items())),
+            }
+            stage = "evidence_first_report"
+            report = EvidenceFirstReportAssembler(knowledge_base.repository).build(company.company_id or "")
+            report_dir = run_dir / "evidence_first_report"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            report_path = report_dir / "report.json"
+            report_path.write_text(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2), encoding="utf-8")
+            review["evidence_first_report"] = {
+                "report_id": report.report_id,
+                "report_json": str(report_path),
+                "summary": {
+                    "milestone_count": len(report.technology_milestones),
+                    "technology_facts_shown": len(report.technology_profile.representative_facts),
+                    "technology_fact_count": report.technology_profile.fact_count,
+                    "financial_dimension_count": len(report.financial_profile.dimensions),
+                    "financial_facts_shown": sum(len(item.representative_facts) for item in report.financial_profile.dimensions),
+                    "financial_fact_count": report.financial_profile.fact_count,
+                    "funding_activity_count": len(report.technology_finance_links.funding_activities),
+                    "risk_count": len(report.technology_finance_links.risks),
+                    "monitoring_node_count": len(report.technology_finance_links.monitoring_nodes),
+                    "financial_gap_count": report.information_gaps.total_gap_count,
+                    "deduplicated_financial_dimension_count": report.information_gaps.deduplicated_financial_dimension_count,
+                    "semantic_gap_count": len(report.information_gaps.semantic_gaps),
+                },
+            }
             review["run"]["status"] = "completed"
         else:
             review["run"]["status"] = "entity_not_resolved"
@@ -772,6 +884,8 @@ async def execute_review(args: argparse.Namespace, settings: Settings, run_dir: 
             review["semantic_execution"] = dict(semantic_processor.last_execution_trace)
         if stage == "technology_finance" and finance_processor is not None:
             review["finance_execution"] = dict(finance_processor.last_execution_trace)
+        if stage == "evidence_assertions" and "assertion_processor" in locals():
+            review["assertion_execution"] = dict(assertion_processor.last_execution_trace)
         error_category = getattr(exc, "category", type(exc).__name__)
         error_record: dict[str, Any] = {"stage": stage, "category": str(error_category)}
         if stage == "technology_semantic" and semantic_processor is not None:

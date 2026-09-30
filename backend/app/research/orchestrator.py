@@ -35,6 +35,7 @@ from app.research.entity_resolution import (
     EntityResolutionResult,
     IdentityResolver,
     IdentityResolutionTrace,
+    discover_self_attested_official_website,
 )
 from app.research.source_classifier import SourceTypeClassifier
 
@@ -102,6 +103,13 @@ class IterativeResearchService:
             "rounds_completed": 0,
             "current_stage": "planning",
             "search_provider": str(getattr(self.search_provider, "name", "unknown")),
+            "official_website_initial": None,
+            "official_website_final": None,
+            "official_website_enriched_during_research": False,
+            "official_website_enrichment_round": None,
+            "official_website_enrichment_diagnostic": None,
+            "official_website_strong_candidate_hosts": [],
+            "official_website_external_candidate_hosts": [],
         }
 
         initial_plan = await self.planner.plan_initial(enterprise_name)
@@ -164,10 +172,18 @@ class IterativeResearchService:
             self._update_execution_trace(current_stage=failure_stage)
             raise
         self._update_execution_trace(current_stage="entity_resolution_completed")
-        identity_trace = IdentityResolutionTrace(queries=identity_query_strings, results_count=len(identity_results), status=identity.status, canonical_name=identity.canonical_name, official_website=identity.official_website, evidence_count=len(identity.evidence_urls), candidates=identity.identity_candidates, reason=identity.reason, official_website_resolution_source=identity.official_website_resolution_source, official_website_evidence_url=identity.official_website_evidence_url, official_website_diagnostic=identity.official_website_diagnostic)
+        website_initial = identity.official_website
+        self._update_execution_trace(
+            official_website_initial=website_initial,
+            official_website_final=website_initial,
+            official_website_enrichment_diagnostic=identity.official_website_diagnostic,
+            official_website_strong_candidate_hosts=list(identity.official_website_strong_candidate_hosts),
+            official_website_external_candidate_hosts=list(identity.official_website_external_candidate_hosts),
+        )
+        identity_trace = IdentityResolutionTrace(queries=identity_query_strings, results_count=len(identity_results), status=identity.status, canonical_name=identity.canonical_name, official_website=identity.official_website, evidence_count=len(identity.evidence_urls), candidates=identity.identity_candidates, reason=identity.reason, official_website_resolution_source=identity.official_website_resolution_source, official_website_evidence_url=identity.official_website_evidence_url, official_website_diagnostic=identity.official_website_diagnostic, official_website_strong_candidate_hosts=identity.official_website_strong_candidate_hosts, official_website_external_candidate_hosts=identity.official_website_external_candidate_hosts)
         if identity.status != "resolved":
             stop_reason = "entity_ambiguous" if identity.status == "ambiguous" else "entity_unresolved"
-            return IterativeResearchResult(enterprise_name=enterprise_name, rounds=1, queries_executed=executed_queries, sources_found=sources_found, sources_ingested=0, new_versions=0, duplicate_versions=0, knowledge_chunks_added=0, trace=[], remaining_information_gaps=gaps, stop_reason=stop_reason, entity_resolution_status=identity.status, identity_evidence_count=len(identity.evidence_urls), identity_candidates=[x.model_dump(mode="json") for x in identity.identity_candidates], identity_trace=identity_trace.model_dump(mode="json"), warnings=identity_failures)
+            return IterativeResearchResult(enterprise_name=enterprise_name, rounds=1, queries_executed=executed_queries, sources_found=sources_found, sources_ingested=0, new_versions=0, duplicate_versions=0, knowledge_chunks_added=0, trace=[], remaining_information_gaps=gaps, stop_reason=stop_reason, entity_resolution_status=identity.status, official_website=identity.official_website, official_website_initial=identity.official_website, official_website_strong_candidate_hosts=identity.official_website_strong_candidate_hosts, official_website_external_candidate_hosts=identity.official_website_external_candidate_hosts, identity_evidence_count=len(identity.evidence_urls), identity_candidates=[x.model_dump(mode="json") for x in identity.identity_candidates], identity_trace=identity_trace.model_dump(mode="json"), warnings=identity_failures)
 
         now = datetime.now(timezone.utc).isoformat()
         metadata = dict(company.metadata)
@@ -248,6 +264,7 @@ class IterativeResearchService:
             )
             failures: list[str] = []
             await self._hydrate_content(unique_results, failures)
+            company = self._enrich_official_website(company, unique_results, round_number)
             round_ingested, type_counts, round_counts, round_summaries, relevance_diagnostics = await self._gate_and_ingest(unique_results, company, aggregate, ingested_urls)
             warnings.extend(relevance_diagnostics.get("warnings", []))
             source_counts.update(type_counts)
@@ -291,8 +308,54 @@ class IterativeResearchService:
             entry.stop_reason = stop_reason
             break
 
-        self._update_execution_trace(current_stage="research_completed")
-        return IterativeResearchResult(enterprise_name=enterprise_name, rounds=len(traces), queries_executed=executed_queries, sources_found=sources_found, sources_ingested=sources_ingested, new_versions=new_versions, duplicate_versions=duplicate_versions, knowledge_chunks_added=chunks_added, trace=traces, remaining_information_gaps=gaps, stop_reason=stop_reason, warnings=warnings, entity_resolution_status=identity.status, resolved_canonical_name=company.canonical_name, official_website=company.official_website, identity_evidence_count=len(identity.evidence_urls), identity_candidates=[x.model_dump(mode="json") for x in identity.identity_candidates], identity_trace=identity_trace.model_dump(mode="json"), relevant_source_count=relevant_total, irrelevant_source_count=irrelevant_total, uncertain_source_count=uncertain_total, source_type_counts=dict(source_counts))
+        self._update_execution_trace(current_stage="research_completed", official_website_final=company.official_website)
+        return IterativeResearchResult(enterprise_name=enterprise_name, rounds=len(traces), queries_executed=executed_queries, sources_found=sources_found, sources_ingested=sources_ingested, new_versions=new_versions, duplicate_versions=duplicate_versions, knowledge_chunks_added=chunks_added, trace=traces, remaining_information_gaps=gaps, stop_reason=stop_reason, warnings=warnings, entity_resolution_status=identity.status, resolved_canonical_name=company.canonical_name, official_website=company.official_website, official_website_initial=website_initial, official_website_enriched_during_research=bool(self.last_execution_trace.get("official_website_enriched_during_research")), official_website_enrichment_round=self.last_execution_trace.get("official_website_enrichment_round"), official_website_enrichment_diagnostic=self.last_execution_trace.get("official_website_enrichment_diagnostic"), official_website_strong_candidate_hosts=list(self.last_execution_trace.get("official_website_strong_candidate_hosts", [])), official_website_external_candidate_hosts=list(self.last_execution_trace.get("official_website_external_candidate_hosts", [])), identity_evidence_count=len(identity.evidence_urls), identity_candidates=[x.model_dump(mode="json") for x in identity.identity_candidates], identity_trace=identity_trace.model_dump(mode="json"), relevant_source_count=relevant_total, irrelevant_source_count=irrelevant_total, uncertain_source_count=uncertain_total, source_type_counts=dict(source_counts))
+
+    def _enrich_official_website(self, company: Company, results: list[SearchResult], round_number: int) -> Company:
+        if company.resolution_status != CompanyResolutionStatus.RESOLVED or company.official_website:
+            self._update_execution_trace(official_website_final=company.official_website)
+            return company
+        discovery = discover_self_attested_official_website(
+            [company.canonical_name, *company.aliases], results
+        )
+        self._update_execution_trace(
+            official_website_strong_candidate_hosts=list(dict.fromkeys([
+                *self.last_execution_trace.get("official_website_strong_candidate_hosts", []),
+                *discovery.candidate_hosts,
+            ])),
+            official_website_external_candidate_hosts=list(dict.fromkeys([
+                *self.last_execution_trace.get("official_website_external_candidate_hosts", []),
+                *discovery.external_candidate_hosts,
+            ])),
+        )
+        diagnostic = discovery.diagnostic or self.last_execution_trace.get(
+            "official_website_enrichment_diagnostic"
+        )
+        if discovery.website and discovery.evidence_url:
+            metadata = dict(company.metadata)
+            metadata.update({
+                "official_website_resolution_source": "self_attested_page",
+                "official_website_evidence_url": discovery.evidence_url,
+                "official_website_discovered_during": "research",
+                "official_website_diagnostic": None,
+            })
+            company = company.model_copy(update={
+                "official_website": discovery.website,
+                "metadata": metadata,
+            })
+            self.knowledge_base.repository.upsert_company(company)
+            self._update_execution_trace(
+                official_website_final=discovery.website,
+                official_website_enriched_during_research=True,
+                official_website_enrichment_round=round_number,
+                official_website_enrichment_diagnostic=None,
+            )
+            return company
+        self._update_execution_trace(
+            official_website_final=company.official_website,
+            official_website_enrichment_diagnostic=diagnostic,
+        )
+        return company
 
     def _update_execution_trace(self, **updates: object) -> None:
         """Keep only non-content execution metadata for failure reporting."""

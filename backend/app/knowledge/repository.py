@@ -32,7 +32,7 @@ class VersionUpsertResult:
 class SQLiteKnowledgeRepository:
     """Store logical sources, immutable snapshots and complete chunks in SQLite."""
 
-    schema_version = 3
+    schema_version = 4
 
     def __init__(self, database_path: str | Path) -> None:
         self.database_path = Path(database_path).expanduser().resolve()
@@ -131,6 +131,17 @@ class SQLiteKnowledgeRepository:
                 );
                 CREATE INDEX IF NOT EXISTS technology_finance_profiles_by_company
                     ON technology_finance_profiles(company_id, updated_at);
+                CREATE TABLE IF NOT EXISTS evidence_assertion_profiles (
+                    profile_id TEXT PRIMARY KEY,
+                    company_id TEXT NOT NULL,
+                    processor_version TEXT NOT NULL,
+                    technology_profile_id TEXT,
+                    finance_profile_id TEXT,
+                    updated_at TEXT NOT NULL,
+                    payload_json TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS evidence_assertion_profiles_by_company
+                    ON evidence_assertion_profiles(company_id, updated_at);
                 """
             )
             connection.execute(f"PRAGMA user_version = {self.schema_version}")
@@ -474,6 +485,46 @@ class SQLiteKnowledgeRepository:
                 values.append(value)
         with self._connection() as connection:
             row = connection.execute("SELECT payload_json FROM technology_finance_profiles WHERE " + " AND ".join(conditions) + " ORDER BY updated_at DESC LIMIT 1", values).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def save_evidence_assertion_profile(self, profile) -> None:
+        """Persist a derived assertion view independently from raw facts and vectors."""
+        payload = _json_payload(profile)
+        with self._connection() as connection:
+            connection.execute(
+                """INSERT INTO evidence_assertion_profiles(
+                       profile_id, company_id, processor_version,
+                       technology_profile_id, finance_profile_id, updated_at, payload_json
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(profile_id) DO UPDATE SET
+                       updated_at=excluded.updated_at, payload_json=excluded.payload_json""",
+                (profile.profile_id, profile.company_id, profile.processor_version,
+                 profile.technology_profile_id, profile.finance_profile_id,
+                 profile.created_at.isoformat(), payload),
+            )
+
+    def get_evidence_assertion_profile(self, company_id: str, *, profile_id: str | None = None,
+                                       processor_version: str | None = None,
+                                       technology_profile_id: str | None = None,
+                                       finance_profile_id: str | None = None) -> dict | None:
+        conditions, values = ["company_id = ?"], [company_id]
+        if profile_id is not None:
+            conditions.append("profile_id = ?")
+            values.append(profile_id)
+        if processor_version is not None:
+            conditions.append("processor_version = ?")
+            values.append(processor_version)
+        if technology_profile_id is not None:
+            conditions.append("technology_profile_id = ?")
+            values.append(technology_profile_id)
+        if finance_profile_id is not None:
+            conditions.append("finance_profile_id = ?")
+            values.append(finance_profile_id)
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT payload_json FROM evidence_assertion_profiles WHERE "
+                + " AND ".join(conditions) + " ORDER BY updated_at DESC LIMIT 1", values
+            ).fetchone()
         return json.loads(row[0]) if row else None
 
     def counts(self, source_id: str | None = None) -> dict[str, int]:

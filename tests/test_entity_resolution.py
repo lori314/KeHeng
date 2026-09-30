@@ -24,6 +24,7 @@ from app.research.entity_resolution import (
     EntityResolutionDraft,
     EntityResolutionResult,
     IdentityResolver,
+    discover_self_attested_official_website,
     SourceRelevanceDraft,
     _validate_urls,
     _is_official_host,
@@ -106,7 +107,7 @@ class EntityResolutionTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_resolved_website_persists_and_classifies_first_party(self):
         query = "某科技公司 官网"
-        body = "某科技公司（某科技公司股份有限公司）官网介绍公司主营技术产品及研发团队。" + "公开资料。" * 100
+        body = "某科技公司（某科技公司股份有限公司）运营的官方网站（https://company.example.com/，以下简称为‘本网站’）。" + "公开资料。" * 100
         homepage = result("https://company.example.com/about", "某科技公司股份有限公司官方网站", body)
         resolved = {"status": "resolved", "canonical_name": "某科技公司股份有限公司", "aliases": ["某科技公司"], "official_website": "https://company.example.com", "unified_social_credit_code": None, "evidence_urls": [homepage.url], "identity_candidates": [], "reason": "官方页面明确标示企业主体与官网。"}
         model = FakeModel([plan(query, include_deep=False), resolved])
@@ -114,12 +115,12 @@ class EntityResolutionTest(unittest.IsolatedAsyncioTestCase):
         outcome = await service.run("某科技公司", max_rounds=1)
         self.assertEqual(outcome.entity_resolution_status, "resolved")
         self.assertEqual(outcome.resolved_canonical_name, "某科技公司股份有限公司")
-        self.assertEqual(outcome.official_website, "https://company.example.com")
+        self.assertEqual(outcome.official_website, "https://company.example.com/")
         company = self.kb.repository.get_company(company_for_name("某科技公司").company_id)
-        self.assertEqual(company.official_website, "https://company.example.com")
+        self.assertEqual(company.official_website, "https://company.example.com/")
         self.assertEqual(company.aliases, ["某科技公司"])
         self.assertEqual(company.metadata["resolution_evidence_urls"], [homepage.url])
-        self.assertEqual(company.metadata["official_website_resolution_source"], "model")
+        self.assertEqual(company.metadata["official_website_resolution_source"], "self_attested_page")
         self.assertEqual(company.metadata["official_website_evidence_url"], homepage.url)
         sources = self.kb.repository.list_current_chunks(company.company_id, "general")
         stored_source = self.kb.repository.get_source(sources[0].source_id)
@@ -133,7 +134,7 @@ class EntityResolutionTest(unittest.IsolatedAsyncioTestCase):
         page = result(
             "https://www.cambricon.com/legal",
             "寒武纪法律声明",
-            "本法律声明适用于中科寒武纪科技股份有限公司……寒武纪官方网站 https://www.cambricon.com/",
+            "本法律声明适用于中科寒武纪科技股份有限公司……本公司运营的官方网站：https://www.cambricon.com/（以下简称本网站）。",
         )
         response = {
             "status": "resolved",
@@ -143,11 +144,13 @@ class EntityResolutionTest(unittest.IsolatedAsyncioTestCase):
             "unified_social_credit_code": None,
             "evidence_urls": [page.url],
             "identity_candidates": [],
-            "reason": "企业官网明确支持该主体",
+            "reason": "企业法律声明支持该主体",
         }
         model = FakeModel([response])
         output = await IdentityResolver(model).resolve("中科寒武纪科技股份有限公司", [page])
         self.assertEqual(output.input_name, "中科寒武纪科技股份有限公司")
+        self.assertEqual(output.official_website, "https://www.cambricon.com/")
+        self.assertEqual(output.official_website_resolution_source, "self_attested_page")
         self.assertNotIn("input_name", response)
         self.assertNotIn("input_name", EntityResolutionDraft.model_fields)
         self.assertIn("不要返回或重述 input_name", model.calls[0]["prompt"])
@@ -262,12 +265,12 @@ class EntityResolutionTest(unittest.IsolatedAsyncioTestCase):
         output = await IdentityResolver(model).resolve("星辰科技", [page])
         self.assertEqual(set(model.calls[0]["payload"]), {"input_name", "identity_search_results"})
         self.assertIsNone(output.official_website)
-        self.assertEqual(output.official_website_diagnostic, "unsupported_identity_claim")
+        self.assertEqual(output.official_website_diagnostic, "official_website_not_self_attested")
 
     async def test_official_website_self_attestation_requires_company_marker_and_own_host(self):
         page = result(
             "https://www.example-company.cn/about", "示例科技股份有限公司",
-            "示例科技股份有限公司官方网站，官网地址 https://www.example-company.cn/。",
+            "示例科技股份有限公司运营的官方网站，本网站：https://www.example-company.cn/。",
         )
         response = {"status": "resolved", "canonical_name": "示例科技股份有限公司", "aliases": [], "official_website": None, "unified_social_credit_code": None, "evidence_urls": [page.url], "identity_candidates": [], "reason": "页面支持主体。"}
         output = await IdentityResolver(FakeModel([response])).resolve("示例科技", [page])
@@ -275,9 +278,69 @@ class EntityResolutionTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(output.official_website_resolution_source, "self_attested_page")
         self.assertEqual(output.official_website_evidence_url, page.url)
 
+    async def test_self_attestation_uses_one_local_window_and_rejects_directory_footer(self):
+        canonical = "示例芯片股份有限公司"
+        page = result(
+            "https://directory.example.com/company/example-chip",
+            "示例芯片股份有限公司官网 - 企业导航",
+            "示例芯片股份有限公司官网： https://www.example-chip.com/。"
+            + ("无关目录正文。" * 80)
+            + "本站首页：https://directory.example.com/",
+        )
+        response = {"status": "resolved", "canonical_name": canonical, "aliases": [], "official_website": None, "unified_social_credit_code": None, "evidence_urls": [page.url], "identity_candidates": [], "reason": "主体证据足够。"}
+        output = await IdentityResolver(FakeModel([response])).resolve(canonical, [page])
+        self.assertIsNone(output.official_website)
+        self.assertIsNone(output.official_website_resolution_source)
+
+    async def test_self_attestation_rejects_own_host_url_far_from_company_claim(self):
+        canonical = "示例芯片股份有限公司"
+        page = result(
+            "https://directory.example.com/company/example-chip",
+            "目录资料",
+            f"{canonical}官方网站 https://company.example.com/。"
+            + ("无关内容。" * 160)
+            + "本站首页：https://directory.example.com/",
+        )
+        response = {"status": "resolved", "canonical_name": canonical, "aliases": [], "official_website": None, "unified_social_credit_code": None, "evidence_urls": [page.url], "identity_candidates": [], "reason": "主体证据足够。"}
+        output = await IdentityResolver(FakeModel([response])).resolve(canonical, [page])
+        self.assertIsNone(output.official_website)
+
+    async def test_self_attestation_does_not_promote_cross_host_official_link(self):
+        canonical = "示例芯片股份有限公司"
+        page = result(
+            "https://news.example.com/story",
+            "示例芯片股份有限公司官网信息",
+            f"{canonical}官方网站 https://company.example.com/。",
+        )
+        response = {"status": "resolved", "canonical_name": canonical, "aliases": [], "official_website": None, "unified_social_credit_code": None, "evidence_urls": [page.url], "identity_candidates": [], "reason": "主体证据足够。"}
+        output = await IdentityResolver(FakeModel([response])).resolve(canonical, [page])
+        self.assertIsNone(output.official_website)
+
+    async def test_self_attestation_accepts_validated_alias_in_local_window(self):
+        canonical = "中科寒武纪科技股份有限公司"
+        alias = "寒武纪"
+        page = result(
+            "https://www.example-chip.com/legal",
+            canonical,
+            f"{canonical}（{alias}）运营的官方网站，本网站：https://www.example-chip.com/。",
+        )
+        response = {"status": "resolved", "canonical_name": canonical, "aliases": [alias], "official_website": None, "unified_social_credit_code": None, "evidence_urls": [page.url], "identity_candidates": [], "reason": "主体与别名均有证据。"}
+        output = await IdentityResolver(FakeModel([response])).resolve(canonical, [page])
+        self.assertEqual(output.official_website, "https://www.example-chip.com/")
+        self.assertEqual(output.official_website_resolution_source, "self_attested_page")
+
+    def test_duplicate_self_attested_host_keeps_first_evidence_page(self):
+        canonical = "示例芯片股份有限公司"
+        first = result("https://www.example-chip.com/legal", canonical, f"{canonical}运营的官方网站，本网站 https://www.example-chip.com/")
+        second = result("https://example-chip.com/about", canonical, f"{canonical}运营的官方网站，本网站 https://example-chip.com/")
+        discovery = discover_self_attested_official_website([canonical, canonical], [first, second])
+        self.assertEqual(discovery.website, "https://www.example-chip.com/")
+        self.assertEqual(discovery.evidence_url, first.url)
+        self.assertEqual(discovery.candidate_hosts, ("example-chip.com",))
+
     async def test_self_attestation_rejects_third_party_host_and_reports_conflict(self):
-        first = result("https://one.example.cn/about", "示例科技股份有限公司", "示例科技股份有限公司官方网站 https://one.example.cn/")
-        second = result("https://two.example.cn/about", "示例科技股份有限公司", "示例科技股份有限公司官方网站 https://two.example.cn/")
+        first = result("https://one.example.cn/about", "示例科技股份有限公司", "示例科技股份有限公司运营的官方网站，本网站 https://one.example.cn/")
+        second = result("https://two.example.cn/about", "示例科技股份有限公司", "示例科技股份有限公司运营的官方网站，本网站 https://two.example.cn/")
         third_party = result("https://news.example.cn/story", "示例科技股份有限公司", "示例科技股份有限公司官网 https://company.example.cn/")
         response = {"status": "resolved", "canonical_name": "示例科技股份有限公司", "aliases": [], "official_website": None, "unified_social_credit_code": None, "evidence_urls": [first.url, second.url, third_party.url], "identity_candidates": [], "reason": "主体证据足够。"}
         third_party_response = {**response, "evidence_urls": [third_party.url]}
@@ -286,6 +349,54 @@ class EntityResolutionTest(unittest.IsolatedAsyncioTestCase):
         output = await IdentityResolver(FakeModel([response])).resolve("示例科技", [first, second, third_party])
         self.assertIsNone(output.official_website)
         self.assertEqual(output.official_website_diagnostic, "official_website_candidate_conflict")
+
+    async def test_university_alumni_website_claim_is_only_an_external_hint(self):
+        canonical = "示例芯片股份有限公司"
+        alumni = result(
+            "https://alumni.university.edu/company/123",
+            "校友企业介绍",
+            f"{canonical}是一家芯片企业。公司网址：www.example-chip.com。页面资源包括 tagline-zh-hans.svg 和 index.php。",
+        )
+        response = {
+            "status": "resolved", "canonical_name": canonical, "aliases": [],
+            "official_website": "https://www.example-chip.com/",
+            "unified_social_credit_code": None, "evidence_urls": [alumni.url],
+            "identity_candidates": [], "reason": "第三方页面提到公司网址。",
+        }
+        output = await IdentityResolver(FakeModel([response])).resolve(canonical, [alumni])
+        self.assertIsNone(output.official_website)
+        self.assertIsNone(output.official_website_resolution_source)
+        self.assertEqual(output.official_website_external_candidate_hosts, ["example-chip.com"])
+        self.assertEqual(output.official_website_strong_candidate_hosts, [])
+
+    async def test_official_privacy_page_can_self_attest_but_generic_homepage_cannot(self):
+        canonical = "示例科技股份有限公司"
+        privacy = result(
+            "https://www.example.com/privacy",
+            "隐私政策",
+            f"本隐私政策适用于{canonical}通过官方网站向用户提供的服务。本网站：https://www.example.com/。",
+        )
+        generic = result(
+            "https://www.generic-example.com/about",
+            canonical,
+            f"{canonical}产品介绍。",
+        )
+        privacy_payload = {
+            "status": "resolved", "canonical_name": canonical, "aliases": [],
+            "official_website": None, "unified_social_credit_code": None,
+            "evidence_urls": [privacy.url], "identity_candidates": [], "reason": "隐私声明。",
+        }
+        generic_payload = {
+            **privacy_payload,
+            "official_website": "https://www.generic-example.com/",
+            "evidence_urls": [generic.url],
+        }
+        accepted = await IdentityResolver(FakeModel([privacy_payload])).resolve(canonical, [privacy])
+        rejected = await IdentityResolver(FakeModel([generic_payload])).resolve(canonical, [generic])
+        self.assertEqual(accepted.official_website, "https://www.example.com/")
+        self.assertEqual(accepted.official_website_resolution_source, "self_attested_page")
+        self.assertIsNone(rejected.official_website)
+        self.assertEqual(rejected.official_website_diagnostic, "official_website_not_self_attested")
 
     def test_entity_resolution_draft_enforces_status_invariants(self):
         base = {"status": "resolved", "canonical_name": "企业", "aliases": [], "official_website": None, "unified_social_credit_code": None, "evidence_urls": ["https://example.test"], "identity_candidates": [], "reason": "依据"}
@@ -416,6 +527,18 @@ class EntityResolutionTest(unittest.IsolatedAsyncioTestCase):
             with self.subTest(url=url):
                 item = SearchResult(title="source", url=url, content="summary", provider="test", topic=topic)
                 self.assertEqual(classifier.classify(item, company), expected)
+
+        hint_only = official.model_copy(update={
+            "official_website": None,
+            "metadata": {"unverified_official_website_candidates": ["company.example.com"]},
+        })
+        alumni_page = SearchResult(
+            title="校友企业介绍",
+            url="https://alumni.university.edu/company/123",
+            content="示例公司网址：www.company.example.com",
+            provider="test",
+        )
+        self.assertEqual(classifier.classify(alumni_page, hint_only), SourceType.WEB)
 
     def test_exchange_disclosure_host_classification_excludes_finance_portals(self):
         classifier = SourceTypeClassifier()

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+import unicodedata
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class RegistryModel(BaseModel):
@@ -44,10 +45,23 @@ class TechnologyTemplate(RegistryModel):
     id: str
     name: str
     important_objects: list[str]
+    selection_terms: list[str] = Field(min_length=1)
     evidence_types: list[str]
     retrieval_hints: list[str]
     milestones: list[MilestoneDefinition]
     inference_rules: list[InferenceRule]
+
+    @model_validator(mode="after")
+    def selection_terms_are_stable_and_unique(self):
+        normalized = [
+            " ".join(unicodedata.normalize("NFKC", term).casefold().split())
+            for term in self.selection_terms
+        ]
+        if any(not term for term in normalized):
+            raise ValueError("technology template selection_terms must be non-empty")
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("technology template selection_terms must be unique")
+        return self
 
 
 class TemplateRegistry(RegistryModel):

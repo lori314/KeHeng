@@ -297,6 +297,8 @@ class TechnologySemanticTest(unittest.IsolatedAsyncioTestCase):
             {"GB/T 37264-2018", "GB/T 40518-2021", "ISO 16290:2013"},
         )
         self.assertTrue(all("未收录标准正文" in item.use_boundary for item in registry.standards.references))
+        self.assertEqual(registry.templates.registry_version, "technology-templates.v2")
+        self.assertTrue(all(item.selection_terms for item in registry.templates.templates))
 
     async def test_fact_type_registry_covers_all_template_references(self):
         registry = KnowledgeSemanticRegistry()
@@ -521,20 +523,19 @@ class TechnologySemanticTest(unittest.IsolatedAsyncioTestCase):
         classifier_chars = sum(len(item["text"]) for item in classifier_chunks)
         extractor_chars = sum(len(item["text"]) for item in extractor_chunks)
 
-        self.assertEqual(classifier_ids, [f"E{index}" for index in range(1, len(extractor_ids) + 1)])
+        self.assertEqual(classifier_ids, [f"E{index}" for index in range(1, len(classifier_ids) + 1)])
         self.assertNotIn("chunk_id", classifier_chunks[0])
         self.assertNotIn("citation", classifier_chunks[0])
-        self.assertEqual(
-            [item["text"] for item in classifier_chunks],
-            [item["text"] for item in extractor_chunks],
-        )
         self.assertLessEqual(classifier_chars, 48_000)
-        self.assertEqual(classifier_chars, extractor_chars)
+        self.assertLessEqual(extractor_chars, 80_000)
         self.assertEqual(profile.semantic_evidence_selection.selected_char_count, classifier_chars)
-        self.assertEqual(profile.fact_extraction_report.input_chunk_count, len(classifier_ids))
+        self.assertEqual(profile.classifier_evidence_selection, profile.semantic_evidence_selection)
+        self.assertEqual(profile.fact_extraction_report.input_chunk_count, len(extractor_ids))
         self.assertEqual(profile.fact_extraction_report.batch_count, len(extraction_calls))
         self.assertTrue(all(len(call["payload"]["general_chunks"]) <= 3 for call in extraction_calls))
         self.assertNotIn("citation", model.calls[0]["payload"]["general_chunks"][0])
+        self.assertEqual(profile.classifier_processed_chunk_count, len(classifier_ids))
+        self.assertEqual(profile.fact_processed_chunk_count, len(extractor_ids))
         self.assertEqual(profile.processed_general_chunk_count, len(classifier_ids))
         self.assertGreaterEqual(profile.semantic_evidence_selection.selected_source_count, 8)
         self.assertEqual(len(before), len(self.kb.repository.list_current_chunks(company.company_id, KnowledgeLayer.GENERAL.value)))
@@ -544,6 +545,8 @@ class TechnologySemanticTest(unittest.IsolatedAsyncioTestCase):
         )
         persisted = self.kb.repository.get_technology_semantic_profile(company.company_id)
         self.assertEqual(persisted["semantic_evidence_selection"], profile.semantic_evidence_selection.model_dump(mode="json"))
+        self.assertEqual(persisted["classifier_evidence_selection"], profile.classifier_evidence_selection.model_dump(mode="json"))
+        self.assertEqual(persisted["fact_evidence_selection"], profile.fact_evidence_selection.model_dump(mode="json"))
         self.assertEqual(processor.last_execution_trace["semantic_stage"], "complete")
         self.assertEqual(processor.last_execution_trace["semantic_substage"], "complete")
         self.assertEqual(processor.last_execution_trace["interpreter_status"], "completed")
@@ -570,6 +573,72 @@ class TechnologySemanticTest(unittest.IsolatedAsyncioTestCase):
             processor.last_execution_trace["interpreter_downgraded_observation_count"],
             profile.interpreter_report.downgraded_observation_count,
         )
+
+    async def test_fact_selected_chunk_outside_classifier_set_can_be_extracted_and_persisted(self):
+        company_name = "模板相关事实回溯合成企业"
+        company = company_for_name(company_name)
+        opening = [
+            f"企业登记与背景资料第{i}段，记载注册地址、组织信息和一般情况。"
+            + (f"一般背景资料{i}，股本与登记信息仅用于合成测试。" * 12)
+            for i in range(24)
+        ]
+        raw_text = "\n\n".join(opening + [
+            "芯片完成流片并进行硅片验证，披露了回片后的芯片测试进展。"
+        ])
+        prepared = prepare_web_source(
+            SearchResult(
+                title="合成技术资料",
+                url="https://long-report.example.test/disclosure",
+                content=raw_text[:260],
+                raw_content=raw_text,
+                provider="test",
+            ),
+            enterprise_name=company_name,
+            company=company,
+        )
+        await self.kb.upsert_source_version(
+            prepared.source,
+            prepared.source_version,
+            prepared.chunks,
+            company=company,
+        )
+        raw_chunks = self.kb.repository.list_current_chunks(company.company_id, KnowledgeLayer.GENERAL.value)
+        self.assertGreater(len(raw_chunks), 3)
+        target = next(chunk for chunk in raw_chunks if "芯片完成流片" in chunk.text)
+
+        class EvidenceAwareModel:
+            def __init__(self):
+                self.calls = []
+
+            async def complete_json(self, _prompt, payload):
+                self.calls.append(payload)
+                if "selected_templates" not in payload:
+                    return classifier_result("E1", templates=("semiconductor_design",))
+                if "technology_facts" in payload:
+                    return interpreter_result(
+                        "semiconductor_design", "tapeout", supporting_fact_refs=("F1",)
+                    )
+                fact_chunk_id = payload["general_chunks"][0]["chunk_id"]
+                return fact_output(
+                    fact_chunk_id,
+                    fact_type="tapeout",
+                    templates=("semiconductor_design",),
+                )
+
+        model = EvidenceAwareModel()
+        processor = TechnologyKnowledgeProcessor(model, self.kb)
+        profile = await processor.process_company(company.company_id)
+        classifier_ids = set(profile.classifier_evidence_selection.selected_chunk_ids)
+        fact_ids = set(profile.fact_evidence_selection.selected_chunk_ids)
+
+        self.assertNotIn(target.chunk_id, classifier_ids)
+        self.assertIn(target.chunk_id, fact_ids)
+        self.assertTrue(profile.technology_facts)
+        fact = next(item for item in profile.technology_facts if item.source_chunk_id == target.chunk_id)
+        self.assertEqual(fact.citation.source_url, target.citation.source_url)
+        derived = self.kb.repository.list_current_chunks(company.company_id, KnowledgeLayer.LIFECYCLE.value)
+        self.assertTrue(any(item.metadata.get("derived_from_chunk_id") == target.chunk_id for item in derived))
+        self.assertGreater(profile.processed_general_chunk_count, 0)
 
     async def test_processor_trace_identifies_classifier_timeout_and_keeps_selection_report(self):
         company, _ = await self.add_general_chunk(

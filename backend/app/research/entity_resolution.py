@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
@@ -69,6 +70,49 @@ class EntityResolutionResult(StrictModel):
     official_website_resolution_source: Literal["model", "self_attested_page"] | None = None
     official_website_evidence_url: str | None = None
     official_website_diagnostic: str | None = None
+    official_website_strong_candidate_hosts: list[str] = Field(default_factory=list)
+    official_website_external_candidate_hosts: list[str] = Field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class OfficialWebsiteDiscovery:
+    website: str | None = None
+    evidence_url: str | None = None
+    candidate_hosts: tuple[str, ...] = ()
+    external_candidate_hosts: tuple[str, ...] = ()
+    diagnostic: str | None = None
+
+
+LOCAL_ATTESTATION_WINDOW = 240
+STRONG_SELF_ATTESTATION_PATTERNS = (
+    r"本网站",
+    r"本站",
+    r"本官网",
+    r"本公司.{0,20}官方网站",
+    r".{0,20}运营.{0,20}官方网站",
+    r"我们的网站",
+    r"our\s+(?:official\s+)?website",
+    r"this\s+(?:official\s+)?website",
+)
+STRONG_SELF_ATTESTATION_MARKER = re.compile(
+    "(?:" + "|".join(STRONG_SELF_ATTESTATION_PATTERNS) + ")",
+    flags=re.IGNORECASE,
+)
+WEAK_OFFICIAL_WEBSITE_MARKER = re.compile(
+    r"(?:官方网站|公司官网|企业官网|公司网址|官网|official\s+(?:website|site)|website)",
+    flags=re.IGNORECASE,
+)
+WEBSITE_HOST_PATTERN = re.compile(
+    r"(?<![\w.@-])(?:(?:https?://)?(?:www\.)?)"
+    r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}"
+    r"(?::\d{1,5})?(?:/[^\s<>\"'，。；：！）》】]*)?",
+    flags=re.IGNORECASE,
+)
+NON_HOST_FILE_SUFFIXES = frozenset({
+    "asp", "aspx", "css", "doc", "docx", "gif", "htm", "html", "ico",
+    "jpeg", "jpg", "js", "json", "pdf", "php", "png", "svg", "txt",
+    "webp", "xml", "xls", "xlsx", "zip",
+})
 
 
 class IdentityResolutionTrace(StrictModel):
@@ -83,6 +127,8 @@ class IdentityResolutionTrace(StrictModel):
     official_website_resolution_source: Literal["model", "self_attested_page"] | None = None
     official_website_evidence_url: str | None = None
     official_website_diagnostic: str | None = None
+    official_website_strong_candidate_hosts: list[str] = Field(default_factory=list)
+    official_website_external_candidate_hosts: list[str] = Field(default_factory=list)
 
 
 class SourceRelevanceDecision(StrictModel):
@@ -129,6 +175,7 @@ class IdentityResolver:
         website_source = None
         website_evidence_url = None
         website_diagnostic = None
+        website_discovery = OfficialWebsiteDiscovery()
         if draft.status == "resolved":
             if not draft.canonical_name:
                 raise _identity_error(
@@ -146,27 +193,21 @@ class IdentityResolver:
                     alias, draft.evidence_urls, by_url,
                     field="alias", code="unsupported_alias",
                 )
-            if draft.official_website:
-                try:
-                    _validate_website(draft.official_website, draft.evidence_urls, by_url)
-                except StructuredModelError as exc:
-                    website_diagnostic = str(exc.category)
-                else:
-                    website = canonicalize_url(draft.official_website)
-                    website_source = "model"
-                    website_evidence_url = next(
-                        (url for url in draft.evidence_urls if _website_supported_by_result(website, by_url[canonicalize_url(url)])),
-                        draft.evidence_urls[0],
-                    )
-            if website is None:
-                candidates = _self_attested_websites(draft.canonical_name, results)
-                candidate_hosts = {_site_host(urlsplit(item[0]).hostname or "") for item in candidates}
-                if len(candidate_hosts) == 1 and candidates:
-                    website, website_evidence_url = candidates[0]
-                    website_source = "self_attested_page"
-                    website_diagnostic = None
-                elif len(candidate_hosts) > 1:
-                    website_diagnostic = "official_website_candidate_conflict"
+            website_discovery = discover_self_attested_official_website(
+                [draft.canonical_name, *draft.aliases], results
+            )
+            if website_discovery.website:
+                website = website_discovery.website
+                website_evidence_url = website_discovery.evidence_url
+                website_source = "self_attested_page"
+            elif website_discovery.diagnostic:
+                website_diagnostic = website_discovery.diagnostic
+            elif draft.official_website:
+                website_diagnostic = (
+                    "unsupported_official_website"
+                    if not _valid_public_url(draft.official_website)
+                    else "official_website_not_self_attested"
+                )
             if draft.unified_social_credit_code:
                 digits = re.sub(r"\s", "", draft.unified_social_credit_code).upper()
                 if not re.fullmatch(r"[0-9A-Z]{18}", digits):
@@ -212,6 +253,12 @@ class IdentityResolver:
         result_data["official_website_resolution_source"] = website_source
         result_data["official_website_evidence_url"] = website_evidence_url
         result_data["official_website_diagnostic"] = website_diagnostic
+        result_data["official_website_strong_candidate_hosts"] = list(
+            website_discovery.candidate_hosts
+        )
+        result_data["official_website_external_candidate_hosts"] = list(
+            website_discovery.external_candidate_hosts
+        )
         return EntityResolutionResult(input_name=input_name, **result_data)
 
 
@@ -410,10 +457,26 @@ def _validate_candidate(
         field=f"{prefix}.canonical_name", code="unsupported_canonical_name",
     )
     if candidate.official_website:
-        _validate_website(
-            candidate.official_website, candidate.evidence_urls, by_url,
-            field=f"{prefix}.official_website",
+        discovery = discover_self_attested_official_website(
+            [candidate.canonical_name],
+            [by_url[canonicalize_url(url)] for url in candidate.evidence_urls],
         )
+        try:
+            claimed_host = _site_host(
+                urlsplit(canonicalize_url(candidate.official_website)).hostname or ""
+            )
+            attested_host = _site_host(
+                urlsplit(canonicalize_url(discovery.website or "")).hostname or ""
+            )
+        except ValueError:
+            claimed_host = ""
+            attested_host = ""
+        if not discovery.website or not claimed_host or claimed_host != attested_host:
+            raise _identity_error(
+                "invalid_identity_claim", f"{prefix}.official_website",
+                "official_website_not_self_attested",
+                "Candidate official website requires strong self-attestation in its cited evidence.",
+            )
     if candidate.unified_social_credit_code:
         value = candidate.unified_social_credit_code.upper()
         if not re.fullmatch(r"[0-9A-Z]{18}", value):
@@ -440,90 +503,79 @@ def _require_claim_evidence(
         )
 
 
-def _validate_website(
-    website: str, evidence_urls: list[str], by_url: dict[str, SearchResult], *,
-    field: str = "official_website",
-) -> None:
-    try:
-        canonical = canonicalize_url(website)
-        host = urlsplit(canonical).hostname or ""
-    except ValueError as exc:
-        raise _identity_error(
-            "invalid_identity_claim", field, "malformed_official_website",
-            "Official website must be a valid public HTTP(S) URL.",
-        ) from exc
-    hosts = {_site_host(urlsplit(canonicalize_url(url)).hostname or "") for url in evidence_urls}
-    website_forms = {canonical, website.strip()}
-    if canonical.endswith("/"):
-        website_forms.add(canonical.rstrip("/"))
-    else:
-        website_forms.add(canonical + "/")
-    explicit = any(
-        _normalize(form) in _normalize(
-            " ".join([
-                by_url[canonicalize_url(url)].title,
-                by_url[canonicalize_url(url)].content,
-                by_url[canonicalize_url(url)].raw_content or "",
-            ])
-        )
-        for form in website_forms
-        for url in evidence_urls
-    )
-    if _site_host(host) not in hosts and not explicit:
-        raise _identity_error(
-            "unsupported_identity_claim", field, "unsupported_official_website",
-            "Official website is not supported by supplied identity evidence.",
-        )
-
-
-def _website_supported_by_result(website: str, result: SearchResult) -> bool:
-    try:
-        website_host = _site_host(urlsplit(canonicalize_url(website)).hostname or "")
-        page_host = _site_host(urlsplit(canonicalize_url(result.url)).hostname or "")
-    except ValueError:
-        return False
-    corpus = " ".join([result.title, result.content, result.raw_content or ""])
-    explicit_url = any(
-        _site_host(urlsplit(canonicalize_url(match.group(0).rstrip(".,;:!?)，。；：！》】"))).hostname or "") == website_host
-        for match in re.finditer(r"https?://[^\s<>\"'，。；：！）》】]+", corpus, flags=re.IGNORECASE)
-        if _valid_public_url(match.group(0).rstrip(".,;:!?)，。；：！》】"))
-    )
-    return bool(website_host and (website_host == page_host or explicit_url))
-
-
-def _self_attested_websites(
-    canonical_name: str, results: list[SearchResult]
-) -> list[tuple[str, str]]:
-    marker_pattern = re.compile(
-        r"(?:官方网站|公司官网|企业官网|官网|official\s+(?:website|site))",
-        flags=re.IGNORECASE,
-    )
+def discover_self_attested_official_website(
+    identity_names: list[str], results: list[SearchResult]
+) -> OfficialWebsiteDiscovery:
+    """Separate strong same-page self-attestation from external website claims."""
     candidates: dict[str, tuple[str, str]] = {}
-    normalized_name = _normalize(canonical_name)
+    external_hosts: dict[str, None] = {}
+    normalized_names = list(dict.fromkeys(
+        _normalize(name) for name in identity_names if name and _normalize(name)
+    ))
     for result in results:
         corpus = " ".join([result.title, result.content, result.raw_content or ""])
-        if normalized_name not in _normalize(corpus) or not marker_pattern.search(corpus):
-            continue
+        corpus = " ".join(unicodedata.normalize("NFKC", corpus).split())
         try:
-            page_host = _site_host(urlsplit(canonicalize_url(result.url)).hostname or "")
+            canonical_page_url = canonicalize_url(result.url)
+            parsed_page_url = urlsplit(canonical_page_url)
+            page_host = _site_host(parsed_page_url.hostname or "")
         except ValueError:
             continue
-        for match in re.finditer(r"https?://[^\s<>\"'，。；：！）》】]+", corpus, flags=re.IGNORECASE):
+        for match in WEBSITE_HOST_PATTERN.finditer(corpus):
             raw_url = match.group(0).rstrip(".,;:!?)，。；：！》】")
-            if not _valid_public_url(raw_url):
+            candidate_url = raw_url if re.match(r"https?://", raw_url, re.IGNORECASE) else f"https://{raw_url}"
+            if not _valid_public_url(candidate_url):
+                continue
+            local_window = corpus[
+                max(0, match.start() - LOCAL_ATTESTATION_WINDOW):
+                min(len(corpus), match.end() + LOCAL_ATTESTATION_WINDOW)
+            ]
+            normalized_window = _normalize(local_window)
+            if not any(name in normalized_window for name in normalized_names):
+                continue
+            if not WEAK_OFFICIAL_WEBSITE_MARKER.search(normalized_window):
                 continue
             try:
-                parsed = urlsplit(canonicalize_url(raw_url))
+                parsed = urlsplit(canonicalize_url(candidate_url))
                 candidate_host = _site_host(parsed.hostname or "")
             except ValueError:
                 continue
-            # Self-attestation is accepted only when the page explicitly names its own host.
-            if not page_host or candidate_host != page_host:
+            top_level_label = candidate_host.rsplit(".", 1)[-1]
+            if not candidate_host or top_level_label in NON_HOST_FILE_SUFFIXES:
                 continue
-            host = urlsplit(canonicalize_url(result.url)).hostname or ""
-            website = f"https://{host}/"
-            candidates.setdefault(page_host, (website, canonicalize_url(result.url)))
-    return list(candidates.values())
+            has_strong_self_reference = bool(
+                STRONG_SELF_ATTESTATION_MARKER.search(normalized_window)
+            )
+            if page_host and candidate_host == page_host and has_strong_self_reference:
+                host = parsed.hostname or ""
+                website = f"https://{host}/"
+                candidates.setdefault(candidate_host, (website, canonical_page_url))
+            elif page_host and candidate_host != page_host:
+                external_hosts.setdefault(candidate_host, None)
+    hosts = tuple(candidates)
+    external_candidate_hosts = tuple(external_hosts)
+    if len(hosts) == 1:
+        website, evidence_url = candidates[hosts[0]]
+        return OfficialWebsiteDiscovery(
+            website=website,
+            evidence_url=evidence_url,
+            candidate_hosts=hosts,
+            external_candidate_hosts=external_candidate_hosts,
+        )
+    if len(hosts) > 1:
+        return OfficialWebsiteDiscovery(
+            candidate_hosts=hosts,
+            external_candidate_hosts=external_candidate_hosts,
+            diagnostic="official_website_candidate_conflict",
+        )
+    return OfficialWebsiteDiscovery(
+        external_candidate_hosts=external_candidate_hosts,
+        diagnostic=(
+            "official_website_not_self_attested"
+            if external_candidate_hosts
+            else None
+        ),
+    )
 
 
 def _valid_public_url(url: str) -> bool:

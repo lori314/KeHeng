@@ -99,6 +99,14 @@ class SemanticEvidenceSelectionReport(StrictModel):
     dropped_as_duplicate: int = Field(default=0, ge=0)
 
 
+class FactEvidenceSelectionReport(SemanticEvidenceSelectionReport):
+    positive_match_candidate_count: int = Field(default=0, ge=0)
+    positive_match_selected_count: int = Field(default=0, ge=0)
+    fallback_fill_count: int = Field(default=0, ge=0)
+    selected_template_ids: list[str] = Field(default_factory=list)
+    positive_match_score_distribution: dict[str, int] = Field(default_factory=dict)
+
+
 class FactExtractionReport(StrictModel):
     batch_count: int = Field(default=0, ge=0)
     successful_batch_count: int = Field(default=0, ge=0)
@@ -151,8 +159,16 @@ class TechnologySemanticProfile(StrictModel):
     input_general_chunk_ids: list[str] = Field(default_factory=list)
     input_general_chunk_count: int = Field(default=0, ge=0)
     processed_general_chunk_count: int = Field(default=0, ge=0)
+    classifier_processed_chunk_count: int = Field(default=0, ge=0)
+    fact_processed_chunk_count: int = Field(default=0, ge=0)
     semantic_evidence_selection: SemanticEvidenceSelectionReport = Field(
         default_factory=SemanticEvidenceSelectionReport
+    )
+    classifier_evidence_selection: SemanticEvidenceSelectionReport = Field(
+        default_factory=SemanticEvidenceSelectionReport
+    )
+    fact_evidence_selection: FactEvidenceSelectionReport = Field(
+        default_factory=FactEvidenceSelectionReport
     )
     classifier_report: "ClassifierReport" = Field(default_factory=lambda: ClassifierReport())
     fact_extraction_report: FactExtractionReport = Field(default_factory=FactExtractionReport)

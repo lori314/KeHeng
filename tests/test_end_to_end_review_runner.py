@@ -279,10 +279,10 @@ class EndToEndReviewRunnerTest(unittest.TestCase):
             "errors": [{"stage": "technology_semantic", "semantic_substage": "domain_template_classifier", "category": "timeout"}],
             "quality_checks": {"warnings": []},
         })
-        self.assertIn("Available / selected chunks: 356 / 18", markdown)
-        self.assertIn("Selected sources / chars: 15 / 44000", markdown)
-        self.assertIn("Truncated selected chunks: 3", markdown)
-        self.assertIn("Quality distribution", markdown)
+        self.assertIn("Classifier evidence: 356 → 18 chunks; 15 sources; 44000 chars", markdown)
+        self.assertIn("Classifier truncated chunks: 3", markdown)
+        self.assertIn("Classifier quality / content scope / source types", markdown)
+        self.assertIn("Technology fact evidence: 0 → 0 chunks", markdown)
         self.assertIn("Fact extraction batches: 6", markdown)
         self.assertIn("Succeeded / failed batches: 5 / 1", markdown)
         self.assertIn("Input chunks covered (successful / total; failed): 15 / 18; 3", markdown)

@@ -18,14 +18,16 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from app.knowledge.contracts import KnowledgeLayer, SourceType
-from app.knowledge.identity import source_id_for
+from app.knowledge.identity import canonicalize_url, company_for_name, source_id_for
+from app.knowledge.semantic.extractor import source_quality
 from app.knowledge.shared_knowledge_base import KnowledgeSearchRequest, SharedKnowledgeBase
 from app.rag.embedding import LocalHashingEmbeddingProvider
 from app.research.contracts import SearchRequest, SearchResult
 from app.research.ingestion import WebContentChunker
 from app.research.orchestrator import IterativeResearchService
 from app.research.planner import RetrievalPlanner
-from app.research.entity_resolution import EntityResolutionResult, SourceRelevanceDecision
+from app.research.entity_resolution import EnterpriseRelevanceGate, EntityResolutionResult, SourceRelevanceDecision
+from app.research.source_classifier import SourceTypeClassifier
 from app.research.search_provider import SearchProviderError, WebSearchProvider
 from app.research.tavily_provider import TavilySearchProvider
 
@@ -200,6 +202,127 @@ class IterativeResearchTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([call.query for call in search.calls], [first_query, followup])
         self.assertIn("X1芯片", search.calls[1].query)
         self.assertEqual(result.trace[0].new_terms, ["X1芯片", "张三", "RISC-V"])
+
+    async def test_research_enrichment_updates_company_before_same_round_relevance_and_ingestion(self):
+        identity_query, followup_query = "示例芯片股份有限公司 主体", "示例芯片股份有限公司 产品"
+        identity_page = page("https://registry.example.net/company", body="示例芯片股份有限公司登记信息。" + "登记事项。" * 100)
+        legal = page(
+            "https://www.example-chip.com/legal",
+            title="示例芯片股份有限公司官方网站",
+            body="示例芯片股份有限公司运营的官方网站，本网站：https://www.example-chip.com/。" + "企业法律与产品信息。" * 120,
+        )
+        product = page(
+            "https://www.example-chip.com/product",
+            title="产品中心",
+            body="示例芯片股份有限公司发布了 X9 芯片产品。" + "产品技术资料。" * 120,
+        )
+        planner_model = FakeStructuredModel([
+            initial_plan((identity_query, "company_identity"), (followup_query, "product")),
+        ])
+
+        class ExplodingModel:
+            async def complete_json(self, _prompt, _payload):
+                raise AssertionError("official-host fast path should skip relevance model")
+
+        class CapturingGate(EnterpriseRelevanceGate):
+            async def assess(self, *args, **kwargs):
+                decisions = await super().assess(*args, **kwargs)
+                self.decisions = decisions
+                return decisions
+
+        gate = CapturingGate(ExplodingModel())
+        search = FakeSearchProvider({identity_query: [identity_page], followup_query: [legal, product]})
+        service = IterativeResearchService(
+            RetrievalPlanner(planner_model), search, self.kb,
+            entity_resolver=TestIdentityResolver(), relevance_gate=gate,
+        )
+        result = await service.run("示例芯片股份有限公司", max_rounds=2)
+
+        self.assertEqual(result.entity_resolution_status, "resolved")
+        self.assertEqual(result.rounds, 2, service.last_execution_trace)
+        company = self.kb.repository.get_company(company_for_name("示例芯片股份有限公司").company_id)
+        self.assertEqual(result.official_website_initial, None)
+        self.assertEqual(result.official_website, "https://www.example-chip.com/")
+        self.assertTrue(result.official_website_enriched_during_research)
+        self.assertEqual(result.official_website_enrichment_round, 2)
+        self.assertEqual(company.official_website, "https://www.example-chip.com/")
+        self.assertEqual(company.metadata["official_website_resolution_source"], "self_attested_page")
+        self.assertEqual(company.metadata["official_website_evidence_url"], legal.url)
+        self.assertEqual(company.metadata["official_website_discovered_during"], "research")
+        self.assertEqual(service.last_execution_trace["official_website_initial"], None)
+        self.assertEqual(service.last_execution_trace["official_website_final"], "https://www.example-chip.com/")
+        self.assertEqual(service.last_execution_trace["official_website_enrichment_round"], 2)
+        self.assertEqual(gate.last_diagnostics["official_host_fast_path_count"], 2)
+        self.assertEqual({x.decision_source for x in gate.decisions}, {"official_host"})
+        self.assertTrue(all(x.status == "relevant" for x in gate.decisions))
+        classifier = SourceTypeClassifier()
+        for result_page in (legal, product):
+            source_id = source_id_for(SourceType.COMPANY_OFFICIAL, canonical_url=canonicalize_url(result_page.url))
+            stored = self.kb.repository.get_source(source_id)
+            self.assertEqual(stored.source_type, SourceType.COMPANY_OFFICIAL)
+            stored_chunks = self.kb.repository.list_current_chunks(company.company_id, KnowledgeLayer.GENERAL.value)
+            source_chunk = next(x for x in stored_chunks if x.source_id == source_id)
+            version = self.kb.repository.get_source_version(source_chunk.source_version_id)
+            self.assertEqual(source_quality(stored, source_chunk, version).category, "first_party")
+            self.assertEqual(classifier.classify(result_page, company), SourceType.COMPANY_OFFICIAL)
+
+    async def test_research_website_conflict_does_not_update_company_or_stop_research(self):
+        identity_query, followup_query = "示例芯片股份有限公司 主体", "示例芯片股份有限公司 产品"
+        identity_page = page("https://registry.example.net/company", body="示例芯片股份有限公司登记信息。" + "登记事项。" * 100)
+        first = page("https://one.example.com/legal", body="示例芯片股份有限公司运营的官方网站，本网站：https://one.example.com/。" + "正文资料。" * 100)
+        second = page("https://two.example.com/legal", body="示例芯片股份有限公司运营的官方网站，本网站：https://two.example.com/。" + "正文资料。" * 100)
+        model = FakeStructuredModel([
+            initial_plan((identity_query, "company_identity"), (followup_query, "product")),
+        ])
+        search = FakeSearchProvider({identity_query: [identity_page], followup_query: [first, second]})
+        service = IterativeResearchService(
+            RetrievalPlanner(model), search, self.kb,
+            entity_resolver=TestIdentityResolver(), relevance_gate=TestRelevanceGate(),
+        )
+        result = await service.run("示例芯片股份有限公司", max_rounds=2)
+        self.assertEqual(result.entity_resolution_status, "resolved")
+        self.assertEqual(result.rounds, 2, service.last_execution_trace)
+        company = self.kb.repository.get_company(company_for_name("示例芯片股份有限公司").company_id)
+        self.assertIsNone(company.official_website)
+        self.assertEqual(result.official_website, None)
+        self.assertEqual(result.official_website_enrichment_diagnostic, "official_website_candidate_conflict")
+        self.assertGreaterEqual(result.sources_ingested, 2)
+        self.assertEqual(service.last_execution_trace["official_website_enriched_during_research"], False)
+
+    async def test_external_website_hints_are_deduplicated_across_research_rounds(self):
+        service, _, _ = self.service([], {})
+        company = company_for_name("示例芯片股份有限公司").model_copy(update={
+            "canonical_name": "示例芯片股份有限公司",
+            "resolution_status": "resolved",
+        })
+        alumni = page(
+            "https://alumni.university.edu/company/123",
+            title="校友企业介绍",
+            body="示例芯片股份有限公司公司网址：www.example-chip.com。",
+        )
+        service._enrich_official_website(company, [alumni], 1)
+        service._enrich_official_website(company, [alumni], 2)
+        self.assertIsNone(company.official_website)
+        self.assertEqual(
+            service.last_execution_trace["official_website_external_candidate_hosts"],
+            ["example-chip.com"],
+        )
+
+        legal = page(
+            "https://www.example-chip.com/legal",
+            title="法律声明",
+            body="示例芯片股份有限公司运营的官方网站（https://www.example-chip.com/，以下简称本网站）。",
+        )
+        resolved = service._enrich_official_website(company, [legal], 3)
+        self.assertEqual(resolved.official_website, "https://www.example-chip.com/")
+        self.assertEqual(
+            service.last_execution_trace["official_website_external_candidate_hosts"],
+            ["example-chip.com"],
+        )
+        self.assertEqual(
+            service.last_execution_trace["official_website_strong_candidate_hosts"],
+            ["example-chip.com"],
+        )
 
     async def test_repeated_query_is_removed_before_search(self):
         query = "某科技公司 官网"

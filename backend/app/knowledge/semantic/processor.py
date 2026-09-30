@@ -17,13 +17,16 @@ from app.knowledge.contracts import (
 from app.knowledge.identity import derived_fact_chunk_id_for, ensure_unique_chunk_ids
 from app.knowledge.semantic.classifier import TechnologyDomainClassifier
 from app.knowledge.semantic.contracts import TechnologySemanticProfile
-from app.knowledge.semantic.evidence_selector import select_semantic_evidence
+from app.knowledge.semantic.evidence_selector import (
+    select_semantic_evidence,
+    select_template_fact_evidence,
+)
 from app.knowledge.semantic.extractor import TechnologyFactExtractor, source_quality
 from app.knowledge.semantic.interpreter import TechnologyInterpreter
 from app.knowledge.semantic.registry import KnowledgeSemanticRegistry
 from app.knowledge.shared_knowledge_base import SharedKnowledgeBase
 
-PROCESSOR_VERSION = "technology-semantic.v7"
+PROCESSOR_VERSION = "technology-semantic.v8"
 
 
 class TechnologyKnowledgeProcessor:
@@ -78,22 +81,28 @@ class TechnologyKnowledgeProcessor:
             versions[version.source_version_id] = version
             quality_objects[chunk.chunk_id] = source_quality(source, chunk, version)
 
-        evidence_selection = select_semantic_evidence(all_chunks, quality_objects)
-        chunks = evidence_selection.original_chunks
-        model_chunks = evidence_selection.model_chunks
-        quality_by_chunk = evidence_selection.quality_by_chunk
-        selection_report = evidence_selection.report
+        classifier_evidence = select_semantic_evidence(all_chunks, quality_objects)
+        classifier_chunks = classifier_evidence.original_chunks
+        classifier_model_chunks = classifier_evidence.model_chunks
+        classifier_quality_by_chunk = classifier_evidence.quality_by_chunk
+        classifier_selection_report = classifier_evidence.report
         self.last_execution_trace = {
             "semantic_stage": "classifier",
             "semantic_substage": "domain_template_classifier",
             "technology_fact_type_registry_version": self.registry.fact_types.registry_version,
-            **selection_report.model_dump(mode="json"),
+            **classifier_selection_report.model_dump(mode="json"),
+            "classifier_evidence_selection": classifier_selection_report.model_dump(mode="json"),
+            "classifier_available_chunk_count": classifier_selection_report.available_chunk_count,
+            "classifier_selected_chunk_count": classifier_selection_report.selected_chunk_count,
+            "classifier_selected_source_count": classifier_selection_report.selected_source_count,
+            "classifier_selected_char_count": classifier_selection_report.selected_char_count,
+            "classifier_quality_distribution": classifier_selection_report.quality_distribution,
         }
 
         domain_profile, selection, classify_gaps = await self.classifier.classify(
             company.canonical_name,
-            model_chunks,
-            quality_by_chunk,
+            classifier_model_chunks,
+            classifier_quality_by_chunk,
         )
         classifier_report = self.classifier.last_report
         self.last_execution_trace.update(
@@ -109,16 +118,39 @@ class TechnologyKnowledgeProcessor:
             secondary_domains=domain_profile.secondary_domains,
             selected_template_ids=selection.selected_template_ids,
         )
+        fact_evidence = select_template_fact_evidence(
+            all_chunks,
+            quality_objects,
+            self.registry,
+            selection.selected_template_ids,
+            classifier_chunks=classifier_chunks,
+        )
+        fact_chunks = fact_evidence.original_chunks
+        fact_model_chunks = fact_evidence.model_chunks
+        fact_selection_report = fact_evidence.report
         self.last_execution_trace.update(
             semantic_stage="fact_extractor",
-            semantic_substage="technology_fact_extractor",
+            semantic_substage="template_fact_evidence_selection",
+            fact_evidence_selection=fact_selection_report.model_dump(mode="json"),
+            fact_available_chunk_count=fact_selection_report.available_chunk_count,
+            fact_positive_match_candidate_count=fact_selection_report.positive_match_candidate_count,
+            fact_positive_match_selected_count=fact_selection_report.positive_match_selected_count,
+            fact_selected_chunk_count=fact_selection_report.selected_chunk_count,
+            fact_selected_source_count=fact_selection_report.selected_source_count,
+            fact_selected_char_count=fact_selection_report.selected_char_count,
+            fact_quality_distribution=fact_selection_report.quality_distribution,
+            fact_fallback_fill_count=fact_selection_report.fallback_fill_count,
+            fact_selected_template_ids=fact_selection_report.selected_template_ids,
+            fact_template_match_score_distribution=fact_selection_report.positive_match_score_distribution,
+            fact_processed_chunk_count=len(fact_chunks),
         )
         try:
+            self.last_execution_trace["semantic_substage"] = "technology_fact_extractor"
             facts, extraction_gaps, rejected_fact_chunks, rejected_fact_tags, extraction_report = await self.extractor.extract(
                 company_id=company_id,
                 domain_profile=domain_profile,
                 selection=selection,
-                chunks=model_chunks,
+                chunks=fact_model_chunks,
                 sources=sources,
                 versions=versions,
             )
@@ -162,13 +194,24 @@ class TechnologyKnowledgeProcessor:
                 + (
                     [
                         "当前 GENERAL chunks 共 {available} 个；semantic selector 在来源多样性与字符预算约束下选择 {selected} 个，覆盖 {sources} 个来源、{chars} 个字符。".format(
-                            available=selection_report.available_chunk_count,
-                            selected=selection_report.selected_chunk_count,
-                            sources=selection_report.selected_source_count,
-                            chars=selection_report.selected_char_count,
+                            available=len(all_chunks),
+                            selected=classifier_selection_report.selected_chunk_count,
+                            sources=classifier_selection_report.selected_source_count,
+                            chars=classifier_selection_report.selected_char_count,
                         )
                     ]
-                    if len(all_chunks) > len(chunks) or selection_report.truncated_chunk_count
+                    if len(all_chunks) > len(classifier_chunks) or classifier_selection_report.truncated_chunk_count
+                    else []
+                )
+                + (
+                    [
+                        "科技事实抽取使用模板感知证据选择：模板词命中 {positive} 个候选，选择 {selected} 个 chunk，回退补充 {fallback} 个。".format(
+                            positive=fact_selection_report.positive_match_candidate_count,
+                            selected=fact_selection_report.selected_chunk_count,
+                            fallback=fact_selection_report.fallback_fill_count,
+                        )
+                    ]
+                    if len(all_chunks) > len(fact_chunks) or fact_selection_report.fallback_fill_count
                     else []
                 )
                 + ([] if facts else ["当前 GENERAL 知识中没有可抽取的单来源科技事实"])
@@ -194,8 +237,12 @@ class TechnologyKnowledgeProcessor:
             company_name=company.canonical_name,
             input_general_chunk_ids=[item.chunk_id for item in all_chunks],
             input_general_chunk_count=len(all_chunks),
-            processed_general_chunk_count=len(chunks),
-            semantic_evidence_selection=selection_report,
+            processed_general_chunk_count=len({item.chunk_id for item in classifier_chunks + fact_chunks}),
+            classifier_processed_chunk_count=len(classifier_chunks),
+            fact_processed_chunk_count=len(fact_chunks),
+            semantic_evidence_selection=classifier_selection_report,
+            classifier_evidence_selection=classifier_selection_report,
+            fact_evidence_selection=fact_selection_report,
             classifier_report=classifier_report,
             fact_extraction_report=extraction_report,
             domain_profile=domain_profile,
@@ -213,7 +260,7 @@ class TechnologyKnowledgeProcessor:
             processing_warnings=warnings,
         )
 
-        raw_by_id = {chunk.chunk_id: chunk for chunk in chunks}
+        raw_by_id = {chunk.chunk_id: chunk for chunk in fact_chunks}
         lifecycle_fact_types = self._lifecycle_fact_types(profile)
         derived_ids = []
         lifecycle_count = 0
@@ -234,7 +281,7 @@ class TechnologyKnowledgeProcessor:
             persistence_phase="derived_chunk_persistence",
         )
         ensure_unique_chunk_ids(derived_ids)
-        await self._write_derived_chunks(profile, chunks, sources, versions)
+        await self._write_derived_chunks(profile, fact_chunks, sources, versions)
         self.last_execution_trace.update(
             semantic_stage="persistence",
             semantic_substage="semantic_profile_persistence",

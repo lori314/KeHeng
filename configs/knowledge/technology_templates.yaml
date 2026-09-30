@@ -1,9 +1,10 @@
 registry_id: keheng_rd_industrialization_templates
-registry_version: technology-templates.v1
+registry_version: technology-templates.v2
 templates:
   - id: software_ai
     name: 软件与人工智能
     important_objects: [算法与模型, 软件系统, 数据集, 算力与部署环境, 软件产品]
+    selection_terms: [软件, 算法, 模型, 人工智能, AI, 推理, 训练, benchmark, 基准测试, SDK, 软件平台, 软件版本, 发布, 部署, 生产环境, 客户应用, 客户验证, 技术报告, 专利]
     evidence_types: [technical_paper, benchmark, prototype, software_release, deployment_validation, customer_application, patent]
     retrieval_hints: [论文与技术报告, benchmark 数据及测试条件, 软件版本与产品文档, 部署场景与验收记录, 客户应用的可核验披露]
     milestones:
@@ -18,6 +19,7 @@ templates:
   - id: semiconductor_design
     name: 集成电路与芯片设计
     important_objects: [芯片架构, IP与设计工具, 流片样品, 测试验证平台]
+    selection_terms: [芯片, 处理器, 集成电路, 芯片设计, 流片, 回片, 样片, 硅片, 芯片测试, 性能测试, 技术验证, 加速卡, 量产, 良率, 专利, tapeout, silicon, processor, accelerator]
     evidence_types: [chip_design, tapeout, silicon_validation, benchmark, customer_validation, patent]
     retrieval_hints: [芯片设计与流片公告, 测试平台和测试条件, 流片轮次与样片验证, 量产及良率披露, 客户验证记录]
     milestones:
@@ -33,6 +35,7 @@ templates:
   - id: advanced_hardware
     name: 先进硬件与装备
     important_objects: [关键部件, 系统集成, 原型样机, 环境与可靠性测试, 制造工艺]
+    selection_terms: [先进硬件, 装备, 关键部件, 传感器, 执行器, 系统集成, 原型, 样机, 工程测试, 环境测试, 可靠性测试, 认证, 中试线, 制造工艺, 工程验证, prototype, reliability, system integration]
     evidence_types: [prototype, engineering_test, certification, pilot_line, manufacturing_validation, customer_application]
     retrieval_hints: [样机和系统测试报告, 环境/可靠性测试条件, 工程化验证记录, 生产线与工艺验证, 客户验收或实际应用记录]
     milestones:
@@ -47,6 +50,7 @@ templates:
   - id: new_materials
     name: 新材料
     important_objects: [材料体系与配方, 制备工艺, 性能测试, 中试线, 批次一致性]
+    selection_terms: [新材料, 材料体系, 材料配方, 成分, 制备工艺, 合成工艺, 性能测试, 材料测试, 实验室验证, 中试线, 工艺放大, 批次一致性, 稳定性, 客户验证, 专利, paper, pilot line, scale-up]
     evidence_types: [lab_validation, pilot_line, scale_up_validation, batch_consistency, customer_validation, patent, paper]
     retrieval_hints: [材料成分与工艺披露, 测试方法和性能指标, 中试规模与运行记录, 批次一致性与稳定性, 客户验证和应用记录]
     milestones:
@@ -61,6 +65,7 @@ templates:
   - id: biopharma
     name: 生物医药与药物研发
     important_objects: [候选药物, 靶点与作用机制, 临床试验, 生产工艺, 注册审批]
+    selection_terms: [生物医药, 药物研发, 候选药物, 药物候选物, 靶点, 作用机制, 临床前, 临床试验, I期临床, II期临床, III期临床, 试验方案, 试验结果, 安全性, 有效性, 监管受理, 药品审批, 获批上市, 生产工艺, 专利, 论文]
     evidence_types: [preclinical, clinical_trial, phase_result, regulatory_filing, approval, patent, paper]
     retrieval_hints: [药物临床登记与阶段, 试验方案和结果, 监管受理/审评公告, 临床阶段转换证据, 获批与商业供应信息]
     milestones:
@@ -76,6 +81,7 @@ templates:
   - id: medical_device
     name: 医疗器械
     important_objects: [医疗器械产品, 适用范围, 临床评价, 注册/备案, 质量体系, 医疗机构应用]
+    selection_terms: [医疗器械, 器械产品, 适用范围, 产品注册, 产品备案, 注册证, 备案凭证, 检验测试, 临床评价, 临床试验, 质量体系, 医疗机构验证, 医院试用, 医院采购, 临床采用, 销售应用, verification test, clinical evaluation, registration]
     evidence_types: [prototype, verification_test, clinical_evaluation, registration_certificate, hospital_validation, sales_application]
     retrieval_hints: [产品注册/备案及适用范围, 检验与临床评价记录, 质量体系核验, 医疗机构试用/采购披露, 持续使用和销售证据]
     milestones:
