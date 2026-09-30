@@ -51,6 +51,43 @@ class FinancialFactExtraction(StrictFinanceModel):
     information_gaps: list[str] = Field(default_factory=list, max_length=80)
 
 
+class FinancialFactBatchDraft(StrictFinanceModel):
+    source_ref: str = Field(min_length=1, max_length=16)
+    subject: str = Field(min_length=1, max_length=500)
+    predicate: str = Field(min_length=1, max_length=300)
+    object_value: str = Field(min_length=1, max_length=2000)
+    fact_type: str = Field(min_length=1, max_length=120)
+    financial_dimension: str = Field(min_length=1, max_length=120)
+    period: str | None = Field(default=None, max_length=120)
+    event_time: datetime | None = None
+    quantitative_value: float | None = None
+    quantitative_unit: str | None = Field(default=None, max_length=80)
+    currency: str | None = Field(default=None, max_length=10)
+
+
+class FinancialFactBatchOutput(StrictFinanceModel):
+    facts: list[FinancialFactBatchDraft] = Field(default_factory=list, max_length=40)
+    information_gaps: list[str] = Field(default_factory=list, max_length=20)
+
+
+class FinancialFactExtractionReport(StrictFinanceModel):
+    batch_count: int = Field(default=0, ge=0)
+    successful_batch_count: int = Field(default=0, ge=0)
+    failed_batch_count: int = Field(default=0, ge=0)
+    input_chunk_count: int = Field(default=0, ge=0)
+    successful_chunk_count: int = Field(default=0, ge=0)
+    failed_chunk_count: int = Field(default=0, ge=0)
+    fact_count: int = Field(default=0, ge=0)
+    batch_size: int = Field(default=0, ge=0)
+    max_concurrency: int = Field(default=0, ge=0)
+    error_categories: dict[str, int] = Field(default_factory=dict)
+    rejected_evidence_reference_count: int = Field(default=0, ge=0)
+    rejected_dimension_count: int = Field(default=0, ge=0)
+    rejected_dimension_distribution: dict[str, int] = Field(default_factory=dict)
+    financial_dimension_distribution: dict[str, int] = Field(default_factory=dict)
+    source_quality_distribution: dict[str, int] = Field(default_factory=dict)
+
+
 class EvidenceBundle(StrictFinanceModel):
     technology_fact_ids: list[str] = Field(default_factory=list)
     milestone_refs: list[str] = Field(default_factory=list)
@@ -119,6 +156,9 @@ class TechFinanceProfile(StrictFinanceModel):
     technology_stage: str | None = None
     enterprise_lifecycle: Literal["startup", "growth", "mature", "unknown"] = "unknown"
     financial_facts: list[FinancialFact] = Field(default_factory=list)
+    financial_fact_extraction_report: FinancialFactExtractionReport = Field(
+        default_factory=FinancialFactExtractionReport
+    )
     financial_scenarios: list[str] = Field(default_factory=list)
     funding_activities: list[FinancingActivityObservation] = Field(default_factory=list)
     risk_observations: list[FinanceRiskObservation] = Field(default_factory=list)

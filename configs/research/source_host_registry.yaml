@@ -1,5 +1,5 @@
 registry_id: keheng_source_type_hosts
-registry_version: source-hosts.v1
+registry_version: source-hosts.v2
 regulatory_hosts:
   - nfra.gov.cn
   - csrc.gov.cn
@@ -7,6 +7,10 @@ regulatory_hosts:
   - samr.gov.cn
 registry_hosts:
   - gsxt.gov.cn
+exchange_disclosure_hosts:
+  - cninfo.com.cn
+  - sse.com.cn
+  - szse.cn
 patent_hosts:
   - cnipa.gov.cn
   - patentscope.wipo.int

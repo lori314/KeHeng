@@ -11,6 +11,8 @@ from typing import Iterator
 
 from app.knowledge.contracts import Company, KnowledgeChunk, Source, SourceVersion
 from app.knowledge.identity import (
+    derived_fact_chunk_id_for,
+    ensure_unique_chunk_ids,
     knowledge_chunk_id_for,
     source_id_for,
     source_version_id_for,
@@ -517,6 +519,7 @@ def _validate_ingestion(
     source_version: SourceVersion,
     chunks: list[KnowledgeChunk],
 ) -> None:
+    ensure_unique_chunk_ids(chunk.chunk_id for chunk in chunks)
     expected_source_id = source_id_for(
         source.source_type,
         external_id=source.external_id,
@@ -539,11 +542,19 @@ def _validate_ingestion(
             raise ValueError("KnowledgeChunk source_version_id is required and must match")
         if chunk.citation.source_version_id != source_version.source_version_id:
             raise ValueError("Citation source_version_id is required and must match")
-        expected_chunk_id = knowledge_chunk_id_for(
-            source_version.source_version_id, chunk.citation.locator, chunk.text
-        )
+        if chunk.metadata.get("semantic_kind") == "technology_fact":
+            fact_id = chunk.metadata.get("fact_id")
+            if not isinstance(fact_id, str) or not fact_id:
+                raise ValueError("Derived technology fact KnowledgeChunk requires fact_id")
+            expected_chunk_id = derived_fact_chunk_id_for(
+                source_version.source_version_id, fact_id
+            )
+        else:
+            expected_chunk_id = knowledge_chunk_id_for(
+                source_version.source_version_id, chunk.citation.locator, chunk.text
+            )
         if chunk.chunk_id != expected_chunk_id:
-            raise ValueError("KnowledgeChunk ID does not match version, locator and text")
+            raise ValueError("KnowledgeChunk ID does not match its identity inputs")
         if chunk.citation.citation_id != chunk_citation_id(chunk):
             raise ValueError("Citation ID does not match version, locator and excerpt")
 

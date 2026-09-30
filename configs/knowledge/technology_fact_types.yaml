@@ -1,0 +1,72 @@
+registry_id: keheng_technology_fact_types
+registry_version: technology-fact-types.v1
+excluded_semantic_categories:
+  - corporate_identity
+  - ownership
+  - financial
+  - general_business
+  - awards_without_technical_milestone
+fact_types:
+  - {id: research_prototype, category: rd_milestone, description: 研究阶段形成的技术原型或可运行样品}
+  - {id: prototype, category: rd_milestone, description: 技术原型或工程样机}
+  - {id: prototype_test, category: rd_milestone, description: 原型或样机测试}
+  - {id: chip_design, category: rd_milestone, description: 芯片架构或设计实现}
+  - {id: design_freeze, category: rd_milestone, description: 芯片设计冻结}
+  - {id: tapeout, category: rd_milestone, description: 集成电路流片}
+  - {id: chip_tapeout, category: rd_milestone, description: 集成电路流片的模板兼容别名}
+  - {id: first_tapeout, category: rd_milestone, description: 首次流片事件}
+  - {id: silicon_validation, category: rd_milestone, description: 流片后硅片验证}
+  - {id: chip_testing, category: rd_milestone, description: 芯片测试}
+  - {id: benchmark, category: rd_milestone, description: 有测试对象和条件的基准测试}
+  - {id: evaluation, category: rd_milestone, description: 技术或产品评测}
+  - {id: engineering_test, category: rd_milestone, description: 工程测试}
+  - {id: environmental_test, category: rd_milestone, description: 环境适应性测试}
+  - {id: verification_test, category: rd_milestone, description: 技术验证测试}
+  - {id: technical_specification, category: rd_milestone, description: 原文披露的技术规格或参数}
+  - {id: technical_capability, category: rd_milestone, description: 原文披露的技术能力}
+  - {id: lab_validation, category: rd_milestone, description: 实验室验证}
+  - {id: material_testing, category: rd_milestone, description: 材料测试}
+  - {id: scale_up_validation, category: rd_milestone, description: 工艺放大验证}
+  - {id: software_release, category: productization, description: 软件版本或系统发布}
+  - {id: product_launch, category: productization, description: 技术产品正式发布}
+  - {id: product_release, category: productization, description: 产品版本发布}
+  - {id: deployment_validation, category: productization, description: 部署后的技术验证或验收}
+  - {id: production_deployment, category: productization, description: 软件或系统在生产环境部署}
+  - {id: customer_validation, category: productization, description: 客户侧明确的技术验证}
+  - {id: customer_application, category: productization, description: 客户实际技术应用或使用}
+  - {id: hospital_validation, category: productization, description: 医疗机构场景验证或试用}
+  - {id: clinical_adoption, category: productization, description: 临床场景实际采用}
+  - {id: manufacturing_validation, category: productization, description: 制造工艺或生产验证}
+  - {id: production_line, category: productization, description: 与技术产品相关的生产线建设或验证}
+  - {id: pilot_line, category: productization, description: 中试线建成或运行}
+  - {id: pilot_production, category: productization, description: 中试生产}
+  - {id: volume_production, category: productization, description: 规模量产}
+  - {id: stable_yield, category: productization, description: 经披露的稳定良率}
+  - {id: scale_production, category: productization, description: 规模化生产}
+  - {id: batch_consistency, category: productization, description: 批次一致性验证}
+  - {id: technical_infrastructure, category: productization, description: 中试、测试或生产验证所需的技术基础设施}
+  - {id: patent_filing, category: research_output, description: 专利申请或提交}
+  - {id: patent_grant, category: research_output, description: 专利授权}
+  - {id: patent_portfolio, category: research_output, description: 技术相关专利组合披露}
+  - {id: patent, category: research_output, description: 模板兼容的专利证据类型}
+  - {id: paper, category: research_output, description: 学术论文或技术论文}
+  - {id: technical_paper, category: research_output, description: 技术论文或技术报告}
+  - {id: preclinical, category: regulated_lifecycle, description: 临床前研究}
+  - {id: candidate_selection, category: regulated_lifecycle, description: 药物候选物筛选}
+  - {id: phase_ii, category: regulated_lifecycle, description: II 期临床试验}
+  - {id: clinical_phase_ii, category: regulated_lifecycle, description: II 期临床试验的模板兼容别名}
+  - {id: phase_iii, category: regulated_lifecycle, description: III 期临床试验}
+  - {id: clinical_phase_iii, category: regulated_lifecycle, description: III 期临床试验的模板兼容别名}
+  - {id: marketing_approval, category: regulated_lifecycle, description: 获得上市许可}
+  - {id: drug_approval, category: regulated_lifecycle, description: 药品获批}
+  - {id: certification, category: regulated_lifecycle, description: 技术产品或体系认证}
+  - {id: registration_certificate, category: regulated_lifecycle, description: 产品注册或备案凭证}
+  - {id: device_registration, category: regulated_lifecycle, description: 医疗器械注册或备案}
+  - {id: clinical_trial, category: regulated_lifecycle, description: 临床试验开展或登记}
+  - {id: phase_result, category: regulated_lifecycle, description: 临床阶段试验结果}
+  - {id: regulatory_filing, category: regulated_lifecycle, description: 监管申报、受理或审评进展}
+  - {id: approval, category: regulated_lifecycle, description: 技术产品相关监管审批}
+  - {id: clinical_evaluation, category: regulated_lifecycle, description: 临床评价}
+  - {id: sales_application, category: productization, description: 医疗器械销售应用场景中的技术应用证据}
+  - {id: technical_personnel, category: technical_people, description: 明确承担研发职责的技术人员}
+  - {id: technical_leadership, category: technical_people, description: 明确承担技术或研发职责的负责人}

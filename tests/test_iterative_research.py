@@ -71,7 +71,7 @@ class TestIdentityResolver:
 
 
 class TestRelevanceGate:
-    async def assess(self, company, results):
+    async def assess(self, company, results, *, trusted_identity_urls=None):
         return [SourceRelevanceDecision(status="relevant", url=result.url, evidence=(result.content or result.raw_content or result.title)[:30], reason="test fixture relevance decision") for result in results]
 
 

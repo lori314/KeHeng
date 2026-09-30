@@ -16,6 +16,7 @@ from app.knowledge.contracts import (
     SourceType,
     SourceVersion,
 )
+from app.knowledge.identity import ensure_unique_chunk_ids
 from app.knowledge.repository import SQLiteKnowledgeRepository, VersionUpsertResult
 from app.rag.embedding import EmbeddingProvider, EmbeddingRequest, LocalHashingEmbeddingProvider
 
@@ -79,6 +80,7 @@ class SharedKnowledgeBase:
     ) -> VersionUpsertResult:
         """Persist one snapshot idempotently, then reconcile its Chroma records."""
 
+        ensure_unique_chunk_ids(chunk.chunk_id for chunk in chunks)
         async with self._write_lock:
             outcome = self.repository.upsert_source_version(
                 source, source_version, chunks, company=company

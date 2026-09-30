@@ -44,6 +44,7 @@ async def run(args: argparse.Namespace) -> Path:
         settings.llm_model,
         settings.llm_api_key,
         timeout=settings.llm_timeout_seconds,
+        enable_thinking=settings.llm_enable_thinking,
     )
     search = TavilySearchProvider(
         settings.tavily_api_key,

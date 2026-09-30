@@ -17,6 +17,7 @@ class SourceTypeClassifier:
             config = yaml.safe_load(stream)
         self.registry_version = config["registry_version"]
         self.regulatory_hosts = set(config["regulatory_hosts"])
+        self.exchange_disclosure_hosts = set(config.get("exchange_disclosure_hosts", []))
         self.registry_hosts = set(config["registry_hosts"])
         self.patent_hosts = set(config["patent_hosts"])
         self.paper_hosts = set(config["paper_hosts"])
@@ -27,6 +28,8 @@ class SourceTypeClassifier:
             return SourceType.COMPANY_OFFICIAL
         if _matches(host, self.registry_hosts):
             return SourceType.REGISTRY
+        if _matches(host, self.exchange_disclosure_hosts):
+            return SourceType.EXCHANGE_DISCLOSURE
         if _matches(host, self.regulatory_hosts):
             return SourceType.REGULATORY
         if _matches(host, self.patent_hosts):

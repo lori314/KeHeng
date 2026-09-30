@@ -171,7 +171,7 @@ Planner 的 OpenAI-compatible JSON adapter 使用现有 `KEHENG_LLM_ENDPOINT`、
 
 ## v1.1 结构化输出稳定性
 
-Provider 支持可关闭的 OpenAI Compatible JSON mode（`response_format.type=json_object`）。首轮响应先经过契约校验；仅在 `schema_failure` 或 JSON 语法错误时最多发起一次格式修复。修复不改变事实、不重新评分、不调用 rule，并记录首轮、修复和最终状态。
+结构化调用优先使用 OpenAI Compatible JSON Schema mode（`response_format.type=json_schema`）：共享 `complete_contract` 将 Pydantic contract 的 JSON Schema 与稳定名称传给支持该能力的 adapter，并在本地再次执行 Pydantic 校验。旧 adapter/FakeModel 仍可使用 JSON object mode（`response_format.type=json_object`）并走相同的本地校验边界。首轮结构或契约错误最多触发一次格式修复；诊断只含字段位置、错误类型和脱敏消息，不保存原始模型输出。修复不改变事实、不重新评分、不调用 rule。
 # Iteration 04 运行边界补充
 
 - 真实模型配对评测允许显式 `--exploratory` 产生诊断输出，但未确认标签必须保留来源，且不得纳入正式准确率。
@@ -184,11 +184,11 @@ Provider 支持可关闭的 OpenAI Compatible JSON mode（`response_format.type=
 
 语义加工顺序为三次分离调用：
 
-1. `prompts/domain_template_classifier_prompt.md`：在当前 GENERAL chunk 限定上下文和 registry ID 白名单内执行多标签科技领域分类及可组合模板选择。模型须为领域和每个模板提供有效 evidence chunk ID；信息不足时输出空标签与缺口。
+1. `prompts/domain_template_classifier_prompt.md`：在当前 GENERAL chunk 限定上下文和 registry ID 白名单内执行多标签科技领域分类及可组合模板选择。应用按输入顺序为每项证据分配本次请求有效的 `E1...En`；模型只返回 `domain_evidence_refs` / `evidence_refs`，不接收或返回内部 chunk ID。应用将短引用映射回稳定 chunk ID 并按首次出现顺序去重；domain 引用按有效子集降级，模板引用逐模板校验并丢弃无法支撑的模板，统计写入 `ClassifierReport`。registry ID 仍严格失败。
 2. `prompts/technology_fact_extractor_prompt.md`：按所选模板从 GENERAL 来源抽取原子科技事实；每个事实必须指向一个输入 `source_chunk_id`，时间、量值和标签仅在原文支持时填写。Citation 由应用从原始 KnowledgeChunk 复制。
-3. `prompts/technology_interpreter_prompt.md`：将已构造的 TechnologyFact 与模板 milestone 对照，输出 supported / limited_support / conflict / no_evidence 及 fact ID。系统校验模板、milestone 和 fact ID，并为未返回的模板 milestone 填充 no_evidence。
+3. `prompts/technology_interpreter_prompt.md`：将已构造的 TechnologyFact compact view 与模板 milestone 对照，输出 supported / limited_support / conflict / no_evidence 及 request-local `F<n>` fact ref。程序建立短引用到 TechnologyFact 的确定性映射，将合法引用转换回稳定 fact ID；unknown ref 按 observation fail-closed，不中断整个语义处理。系统仍严格校验 template/milestone，并为未返回的模板 milestone 填充 no_evidence。
 
-三步各自最多一次结构修复。无效 registry ID 或 classifier evidence 会使阶段失败；不存在输入中的 extractor source chunk ID 会使该原子事实作废并写处理警告；无效 Interpreter fact ID 会拒绝该次解释。模型输出 Citation 不属于任何阶段契约。
+三步各自最多一次结构修复。无效 registry ID 会使阶段失败；classifier 未知临时 evidence ref 按 `ClassifierReport` 记录并执行 fail-closed 降级，不向模型暴露稳定 ID；不存在输入中的 extractor source chunk ID 会使该原子事实作废并写处理警告；Interpreter 未知短 fact ref 由应用按 observation fail-closed，并记录引用质量报告，不再因单条 fact ref 错误中断整次解释。模型输出 Citation 不属于任何阶段契约。
 
 模板规则是项目编写的解释边界，不是外部标准全文。Interpreter 结果不含成熟度或综合分数。应用按模板 fact_type 触发禁止推断约束，向 observation 写入 `blocked_inferences`；若模型 reason 命中模板禁止结论标记，则把状态降为 `limited_support` 并用规则允许的证据范围替换原 reason。例如 `tapeout` 不支持“已量产/良率稳定/客户采购”，benchmark 不支持生产部署，中试线不支持规模量产，II期不支持III期或获批，注册证不支持市场接受。来源质量按确定性类别给出；只有 `snippet_only`/`weak_web` 事实的 supported observation 自动降为 limited_support。
 
@@ -197,7 +197,7 @@ Provider 支持可关闭的 OpenAI Compatible JSON mode（`response_format.type=
 显式 CLI 运行时，企业名、当前 GENERAL chunk 正文及 Citation 会发送至环境中配置的模型服务，抽取结果再传入 Interpreter；该模型数据流仅在命令触发时发生，未配置 provider 时零请求退出。运行输出保存在 `runtime/technology_semantic/`，与 SQLite Profile 一样按敏感派生数据管理。
 ## V2 第五阶段：科技金融联合推理
 
-新增两套独立 prompt：`financial_fact_extractor_prompt.md` 只抽取来源中明确记载的原子财务/经营事实；`tech_finance_mapper_prompt.md` 只在已由 registry 预筛的候选规则和事实 ID 中选择证据 bundle。两步骤复用共享结构化 LLM adapter 及单次 schema repair policy，不把事实抽取与金融推理混在同一个 prompt。
+`financial_fact_extractor_prompt.md` 由 `FinancialFactExtractor` 调用，只抽取来源中明确记载的原子财务/经营事实。Finance mapping 不调用 LLM：`TechnologyFinanceMapper` 根据登记条件确定候选与适用规则，完整绑定候选匹配的科技事实、里程碑引用和财务事实；`tech_finance_mapper_prompt.md` 已标记为弃用/未使用，仅为历史参考保留。
 
 FinancialFact 输出严格校验字段、标准 financial dimension 和当前输入 chunk ID；Citation、来源质量由程序克隆/计算。映射输出只接受已知 rule/scenario/fact/milestone ID，Observation 类型还必须属于 registry 对应 rule 的 output_type。任一 unsupported ID 或未登记场景会失败关闭。规则配置驱动六个科技模板的规则选择，不把模板映射硬编码为 Python 分支。
 
@@ -207,6 +207,34 @@ FinancialFact 输出严格校验字段、标准 financial dimension 和当前输
 
 ## V2 第六阶段：迭代研究的身份与相关性模型调用
 
-`backend/app/research/orchestrator.py` 在深度检索前调用 `IdentityResolver`，提示词位于 `prompts/entity_resolver_prompt.md`。输出经严格 Pydantic 契约及应用侧证据检查：身份声明不能脱离本轮检索 URL 和正文；ambiguous 至少包含两个证据绑定候选，unresolved 不允许附带身份声明。身份未解析时不继续研究、不准入网页。
+`backend/app/research/orchestrator.py` 在深度检索前调用 `IdentityResolver`，提示词位于 `prompts/entity_resolver_prompt.md`。LLM 输出使用不含 `input_name` 的 `EntityResolutionDraft`；对非空身份检索结果，草稿 schema 强制 `evidence_urls` 至少包含一个 URL，最终 `EntityResolutionResult.input_name` 由调用方设置。输出经严格 Pydantic 契约及应用侧证据检查：身份声明不能脱离本轮检索 URL 和正文；ambiguous 至少包含两个证据绑定候选，unresolved 不允许附带身份声明。确定性身份校验失败返回脱敏的字段级 diagnostics，不记录 claim 原文或网页正文。研究服务维护仅含 query、计数、provider 和当前阶段的运行快照，供失败报告显示部分进度；不改变正常研究结果 contract。官网 host 比较将一个前导 `www.` 归一化，并保留精确 host/合法子域边界。身份未解析时不继续研究、不准入网页。
 
-解析成功后，`EnterpriseRelevanceGate` 使用 `prompts/enterprise_relevance_prompt.md` 对非官网页面批量分类为 relevant / irrelevant / uncertain。模型必须逐页返回且不能引入候选集之外的 URL；确定的 relevant/irrelevant 决策须带可在该页找到的证据片段。uncertain 可不带片段，但仍记录判定原因。官网 host 与子域名采用确定性规则跳过相关性模型。结构化输出修复由共享 `complete_contract` 边界处理；验证仍失败会使研究调用失败，不将该批次页面入库。此 gate 不要求网页事实回答生成 citation，也不等同于事实核验或联网搜索质量评测。
+解析成功后，`EnterpriseRelevanceGate` 使用 `prompts/enterprise_relevance_prompt.md` 对非官网页面批量分类为 relevant / irrelevant / uncertain。模型只返回本批次的 `P1..Pn` 页码 ID，不返回 URL；应用将 ID 映射回原始 `SearchResult`。relevant / irrelevant 必须提供经 NFKC 与空白规范化后可在该页标题、摘要或正文中精确找到的 `evidence_quote`。缺失、重复、未知 ID 分别记录诊断，缺失或重复决策降级为 uncertain，未知 ID 忽略。证据片段不匹配时降级为 uncertain；uncertain 可不带片段。相关性结构化调用异常时，所有待判页面均保留为 uncertain，且不会被准入知识库。身份解析时已核验的 `evidence_urls` 与官网 host/子域名分别走可诊断的确定性 relevant 快速路径。每轮 `ResearchTraceEntry.relevance_diagnostics` 记录模型判定、降级、缺失/重复/未知引用、回退和快速路径计数。此 gate 不等同于网页事实核验或联网搜索质量评测。
+
+## V2 第七阶段：科技语义 evidence intake 与上下文预算
+
+`TechnologyKnowledgeProcessor` 以 `evidence_selector.py` 对当前 GENERAL chunks 做无模型预筛选：按来源轮转保证多源覆盖，再按已有 SourceQuality 类别、`full_content`、页/段定位和稳定 chunk ID 排序；默认最多每来源 2 个、18 个 chunk、每 chunk 3,200 字符、总语义正文 48,000 字符。NFKC/空白规范化后的字符 5-gram Jaccard 只过滤高度相似文本，不依赖 embedding。classifier 与 extractor 共用选中集合及 bounded text view；LLM payload 的 Citation metadata 保留来源定位但省略重复 excerpt，原 chunk/Citation 不被改写，派生事实仍指向原始 chunk。`TechnologySemanticProfile.semantic_evidence_selection` 保存选择统计，processor execution trace 记录 evidence selection、classifier、extractor 与 interpreter 当前阶段，runner 失败报告据此区分具体语义子阶段。SourceQuality 按 `source-hosts.v2` 分类；交易所/法定披露 `exchange_disclosure` 映射为 `authoritative_public_record`。
+
+身份解析契约将 resolved 必填 canonical name、ambiguous 至少两个候选、unresolved 禁止身份主张/候选作为 Pydantic 状态约束。官网先尝试模型声明并做确定性 URL/证据校验；无效或缺失时，只有包含规范企业名、明确官网标记并显式列出页面自身 host URL 的结果可自证官网。第三方页面外链不作为自证；多个 host 冲突时留空并记录诊断。解析来源及证据 URL进入结果 trace 与 Company metadata。
+
+## V2 第八阶段：科技事实抽取 bounded batches
+
+`TechnologyFactExtractor` 按 selector 返回顺序分段，每批最多 3 个 GENERAL chunks，并通过 `asyncio.Semaphore(2)` 限制并发。每批只携带当前 1–3 个 chunk 与共享 domain/template 上下文；其结构化响应单批上限为 36 facts、12 information gaps。按 batch index 和模型原始 fact 顺序合并，再依次验证 batch-local chunk 引用、全局 selected chunk 引用、domain/template tags 和稳定 ID。拒绝跨 batch 引用使用 `invalid_batch_chunk_reference` warning 与拒绝数审计；LLM 不能自行创建引用或 Citation。Prompt 指示每个 chunk 优先保留约 10 个有独立信息量的事实。
+
+TechnologyFact 类型由 `configs/knowledge/technology_fact_types.yaml` 版本化登记。Extractor payload 附带类型 ID、category 和 description；契约字段仍为 `str`，应用只做 `strip` 与 `casefold` 后的精确白名单检查，不作类型猜测或自动映射。未登记类型直接拒绝、不生成 stable fact ID，并在 `FactExtractionReport` / trace 记录拒绝总数、类型分布及 `unregistered_fact_type` 类别；Profile 仅增加不含正文的 `technology_fact_type_rejected:<count>` warning。启动加载模板 registry 时，会校验模板 `evidence_types`、milestone `fact_type_hints` 与 inference rule `fact_type_any` 都已登记。
+
+职责边界：TechnologyFact 只表示技术路线、技术成果及研发、验证、产品化、产业化里程碑；FinancialFact 表示财务、经营、商业、融资、客户订单金额和研发投入等经营维度事实。客户验证、试用、部署、验收和技术应用可以作为 TechnologyFact；订单/合同金额和收入由 Finance 处理。普通公司登记、股权、公司历史和非技术里程碑奖项不进入 TechnologyFact。同一 GENERAL 原始来源可被两类 extractor 分别使用，二者保存各自的事实类型、ID 与 Citation。
+
+Technology→Finance 的 registry rule 若配置非空 `milestone_any`，只由 `supported` 技术里程碑触发；`limited_support`、`conflict` 和 `no_evidence` 不构成已发生的阶段。一般场景规则不依赖技术里程碑，仍可按其 FinancialFact 条件适用。Mapper 将候选里的 milestone ref/status 传给模型，但最终 milestone status 由程序从 TechnologySemanticProfile 确定；条件规则的 EvidenceBundle 必须保留实际触发 ref 及该 milestone 的 supporting/contradicting fact IDs。Finance 输出状态不得强于其技术触发里程碑；仅当所选 FinancialFact 全部为 `weak_web` / `snippet_only` 时按来源强度降为 `limited_support`，混有 authoritative/first-party 时不因弱来源单独降级。`MonitoringNode.status` 表示监测节点触发依据的证据强度，不表示所需监测目标已经实现。
+
+每批超时、schema/invalid response、网络或服务错误时均不接纳该批事实。其它批次继续执行；部分成功输出带失败数量 gap，全部失败抛出首个按 batch 顺序遇到的 provider category。Profile 的 `classifier_report`、`fact_extraction_report` 和 runner trace 记录 classifier / extractor 统计与错误类别，不包含 prompt、raw response 或 secret。classifier 短引用隔离使当前语义处理器版本更新至 `technology-semantic.v7`；TechnologyFact 类型边界变更对应 `technology-semantic.v6`。TechnologyFact 的 derived chunk identity 绑定稳定 `fact_id`，避免不同语义事实因相同 SPO/locator 发生向量 ID 冲突；processor trace 分别记录 milestone 解释、派生 chunk 持久化和 semantic profile 持久化阶段。
+
+Interpreter 每次请求按输入顺序生成 `F1...Fn`，模型只接收 subject/predicate/object、fact type、时间和量值、domain/template tags 与 source quality 类别；不接收内部 `fact_id`、company/source chunk ID、Citation、URL、locator、质量理由或 processor version。模型边界使用 `supporting_fact_refs` / `contradicting_fact_refs`，应用将合法短引用映射回稳定 fact ID，Profile 继续保存原有 ID。重复引用按首次出现顺序去重；unknown refs 被过滤并按单条 observation 降级；support/conflict 必须由可验证引用支撑，重叠引用不能同时进入两侧。`InterpreterReport` 在 Profile 中记录输入事实、模型/输出 observations、invalid/partial/full invalid refs、duplicate/overlap 和状态降级计数。template、milestone 与重复 observation 校验仍严格失败；现有弱来源和禁止推断 deterministic guards 继续执行。
+
+## 结构化模型 thinking 配置
+
+`Settings.llm_enable_thinking` 对应可选环境变量 `KEHENG_LLM_ENABLE_THINKING`。未设置（`None`）时，OpenAI-compatible structured request 不包含 `enable_thinking` 字段；显式配置布尔值时，将 `true`/`false` 原样放在请求体顶层。模型适配器不改变 timeout 或其他请求参数。所有脚本中的真实 structured model 构造都传递该配置；脱离 provider 的测试替身不受影响。
+
+`FinancialFactExtractor` 将现有最多 60 个输入 chunks 按顺序切成每批最多 4 个，并用 `asyncio.Semaphore(2)` 限制并发。每批只发送 batch-local `C1...C4`、chunk 正文截断视图和 source-quality 类别/类型/scope；模型不得接收或返回真实 KnowledgeChunk ID 或 Citation。应用仅接受当前批次内有效 `source_ref`，确定性恢复原始 chunk、Citation 和 quality，并用 company、真实 chunk ID、规范事实字段、processor/registry 版本计算稳定 fact ID。无效引用及 registry 外 financial dimension 被拒绝并记录计数；不同批次按输入顺序合并、按稳定 ID 去重。失败批不接纳事实；部分失败保留成功批输出并添加明确 gap，全部失败才抛出结构化错误。`FinancialFactExtractionReport`、`FinancialFactExtractor.last_execution_trace` 和 Finance processor 阶段 trace 记录批次/输入 chunk/事实、dimension/source-quality 分布、拒绝计数和失败类别，不保存 prompt、raw response 或 secret。Finance processor version 为 `technology-finance.v4`。
+
+Finance mapper 的规则适用性与证据绑定为确定性 registry-first 流程：含 `milestone_any` 的规则仅在指定模板/里程碑存在 `supported` observation 时成为候选；limited/conflict/no_evidence 不触发阶段规则。无里程碑条件的通用规则独立按 `financial_dimension_any` 匹配。候选的 scenario、输出类型和全部匹配 evidence IDs 均直接来自 registry 与当前结构化事实；mapper 不依赖模型、prompt 或 structured model adapter。后续 `_assemble()` 保留 milestone strength、弱证据降级、安全原因、Citation/事实溯源与验证逻辑。mapper/processor trace 和 review 中记录 candidate/applied rules、候选类别计数及 `mapping_mode=deterministic_registry`。

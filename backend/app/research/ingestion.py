@@ -184,6 +184,7 @@ def prepare_web_source(
         source_type=source_type,
         title=result.title.strip() or canonical_url,
         canonical_url=canonical_url,
+        publisher=(str(result.metadata["publisher"]) if result.metadata.get("publisher") else None),
         metadata={"provider": result.provider, **source_type_metadata},
     )
     source_version = source_version_for(

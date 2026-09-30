@@ -44,6 +44,7 @@ async def run(enterprise_name: str) -> Path:
             settings.llm_model,
             settings.llm_api_key,
             timeout=settings.llm_timeout_seconds,
+            enable_thinking=settings.llm_enable_thinking,
         )
         profile = await TechnologyKnowledgeProcessor(model, knowledge_base).process_company(
             stored_company.company_id or ""

@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     llm_model: str = ""
     llm_api_key: str = ""
     llm_timeout_seconds: int = 120
+    llm_enable_thinking: bool | None = None
     web_search_provider: Literal["", "tavily"] = ""
     tavily_api_key: str = ""
     tavily_search_depth: Literal["basic", "advanced"] = "advanced"

@@ -27,7 +27,7 @@ async def run(company_name: str) -> dict:
     try:
         if kb.repository.get_technology_semantic_profile(company_id) is None:
             raise ValueError("No TechnologySemanticProfile exists; run scripts/run_technology_semantic_processing.py first")
-        model = OpenAICompatibleStructuredModel(settings.llm_endpoint, settings.llm_model, settings.llm_api_key, timeout=settings.llm_timeout_seconds)
+        model = OpenAICompatibleStructuredModel(settings.llm_endpoint, settings.llm_model, settings.llm_api_key, timeout=settings.llm_timeout_seconds, enable_thinking=settings.llm_enable_thinking)
         profile = await TechnologyFinanceProcessor(model, kb).process_company(company_id)
         return profile.model_dump(mode="json")
     finally:

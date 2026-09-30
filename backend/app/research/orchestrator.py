@@ -67,6 +67,7 @@ class IterativeResearchService:
         self.entity_resolver = entity_resolver or (IdentityResolver(model) if model is not None else None)
         self.relevance_gate = relevance_gate or (EnterpriseRelevanceGate(model) if model is not None else None)
         self.source_classifier = source_classifier or SourceTypeClassifier()
+        self.last_execution_trace: dict[str, object] = {}
 
     async def run(
         self,
@@ -91,6 +92,18 @@ class IterativeResearchService:
         if source_limit < 1:
             raise ValueError("max_sources must be positive")
 
+        self.last_execution_trace = {
+            "enterprise_name": enterprise_name,
+            "queries_executed": [],
+            "identity_queries": [],
+            "identity_results_count": 0,
+            "sources_found": 0,
+            "sources_ingested": 0,
+            "rounds_completed": 0,
+            "current_stage": "planning",
+            "search_provider": str(getattr(self.search_provider, "name", "unknown")),
+        }
+
         initial_plan = await self.planner.plan_initial(enterprise_name)
         company = company_for_name(enterprise_name)
         stored_company = self.knowledge_base.repository.get_company(company.company_id or "")
@@ -98,6 +111,7 @@ class IterativeResearchService:
             company = stored_company
         if self.entity_resolver is None or self.relevance_gate is None:
             raise RuntimeError("Entity resolution and enterprise relevance components are required")
+        self._update_execution_trace(current_stage="planned")
         identity_queries = list(initial_plan.company_identity_queries[: min(4, max_queries_per_round)])
         if not identity_queries:
             identity_queries = [RetrievalQuery(query=f"{enterprise_name} 企业主体 官网 工商", category="company_identity")]
@@ -121,29 +135,62 @@ class IterativeResearchService:
         identity_query_strings = [item.query for item in identity_queries]
         executed_queries.extend(identity_query_strings)
         executed_keys.update(_query_key(query) for query in identity_query_strings)
+        self._update_execution_trace(
+            current_stage="planned",
+            identity_queries=identity_query_strings,
+            queries_executed=list(executed_queries),
+        )
+        self._update_execution_trace(current_stage="identity_search_started")
         raw_identity = await self._search_round(identity_queries, max_results_per_query=min(5, max_results_per_query))
         identity_results, identity_duplicates, identity_new_count = _unique_results(raw_identity, seen_urls, seen_results, max(0, source_limit - sources_found))
         sources_found += identity_new_count
+        self._update_execution_trace(
+            current_stage="identity_search_completed",
+            identity_results_count=len(identity_results),
+            sources_found=sources_found,
+        )
         identity_failures: list[str] = []
         await self._hydrate_content(identity_results, identity_failures)
-        identity = await self.entity_resolver.resolve(enterprise_name, identity_results)
-        identity_trace = IdentityResolutionTrace(queries=identity_query_strings, results_count=len(identity_results), status=identity.status, canonical_name=identity.canonical_name, official_website=identity.official_website, evidence_count=len(identity.evidence_urls), candidates=identity.identity_candidates, reason=identity.reason)
+        self._update_execution_trace(current_stage="entity_resolution_started")
+        try:
+            identity = await self.entity_resolver.resolve(enterprise_name, identity_results)
+        except Exception as exc:
+            category = getattr(exc, "category", None)
+            failure_stage = (
+                "entity_validation_failed"
+                if category in {"invalid_identity_claim", "invalid_identity_reference", "unsupported_identity_claim"}
+                else "entity_resolution_failed"
+            )
+            self._update_execution_trace(current_stage=failure_stage)
+            raise
+        self._update_execution_trace(current_stage="entity_resolution_completed")
+        identity_trace = IdentityResolutionTrace(queries=identity_query_strings, results_count=len(identity_results), status=identity.status, canonical_name=identity.canonical_name, official_website=identity.official_website, evidence_count=len(identity.evidence_urls), candidates=identity.identity_candidates, reason=identity.reason, official_website_resolution_source=identity.official_website_resolution_source, official_website_evidence_url=identity.official_website_evidence_url, official_website_diagnostic=identity.official_website_diagnostic)
         if identity.status != "resolved":
             stop_reason = "entity_ambiguous" if identity.status == "ambiguous" else "entity_unresolved"
             return IterativeResearchResult(enterprise_name=enterprise_name, rounds=1, queries_executed=executed_queries, sources_found=sources_found, sources_ingested=0, new_versions=0, duplicate_versions=0, knowledge_chunks_added=0, trace=[], remaining_information_gaps=gaps, stop_reason=stop_reason, entity_resolution_status=identity.status, identity_evidence_count=len(identity.evidence_urls), identity_candidates=[x.model_dump(mode="json") for x in identity.identity_candidates], identity_trace=identity_trace.model_dump(mode="json"), warnings=identity_failures)
 
         now = datetime.now(timezone.utc).isoformat()
         metadata = dict(company.metadata)
-        metadata.update({"resolution_evidence_urls": identity.evidence_urls, "resolved_at": now, "resolver_version": "entity-resolver.v1"})
+        metadata.update({"resolution_evidence_urls": identity.evidence_urls, "resolved_at": now, "resolver_version": "entity-resolver.v2", "official_website_resolution_source": identity.official_website_resolution_source, "official_website_evidence_url": identity.official_website_evidence_url, "official_website_diagnostic": identity.official_website_diagnostic})
         company = company.model_copy(update={"canonical_name": identity.canonical_name, "aliases": identity.aliases, "official_website": identity.official_website, "unified_social_credit_code": identity.unified_social_credit_code, "resolution_status": CompanyResolutionStatus.RESOLVED, "metadata": metadata})
         self.knowledge_base.repository.upsert_company(company)
 
         source_counts: Counter[str] = Counter()
         ingested_urls: set[str] = set()
         aggregate = {"ingested": 0, "new_versions": 0, "duplicate_versions": 0, "chunks": 0, "relevant": 0, "irrelevant": 0, "uncertain": 0}
-        identity_ingested, identity_type_counts, identity_counts, identity_summaries = await self._gate_and_ingest(identity_results, company, aggregate, ingested_urls)
+        self._update_execution_trace(current_stage="identity_relevance_gate_started")
+        identity_ingested, identity_type_counts, identity_counts, identity_summaries, identity_relevance_diagnostics = await self._gate_and_ingest(
+            identity_results, company, aggregate, ingested_urls,
+            trusted_identity_urls=identity.evidence_urls,
+        )
+        self._update_execution_trace(
+            current_stage="identity_sources_ingested",
+            sources_ingested=identity_counts["ingested"],
+        )
+        warnings.extend(identity_relevance_diagnostics.get("warnings", []))
         source_counts.update(identity_type_counts)
         sources_ingested += identity_counts["ingested"]
+        self._update_execution_trace(sources_ingested=sources_ingested)
         new_versions += identity_counts["new_versions"]
         duplicate_versions += identity_counts["duplicate_versions"]
         chunks_added += identity_counts["chunks"]
@@ -151,8 +198,9 @@ class IterativeResearchService:
         irrelevant_total = identity_counts["irrelevant"]
         uncertain_total = identity_counts["uncertain"]
         discovered_terms: list[str] = []
-        identity_entry = ResearchTraceEntry(round=1, queries=identity_query_strings, results_count=len(raw_identity), new_source_count=identity_counts["ingested"], duplicate_source_count=identity_duplicates, new_terms=[], information_gaps=gaps, planner_reason=initial_plan.reason, content_retrieval_failures=identity_failures, relevant_source_count=identity_counts["relevant"], irrelevant_source_count=identity_counts["irrelevant"], uncertain_source_count=identity_counts["uncertain"], source_type_counts=identity_type_counts)
+        identity_entry = ResearchTraceEntry(round=1, queries=identity_query_strings, results_count=len(raw_identity), new_source_count=identity_counts["ingested"], duplicate_source_count=identity_duplicates, new_terms=[], information_gaps=gaps, planner_reason=initial_plan.reason, content_retrieval_failures=identity_failures, relevant_source_count=identity_counts["relevant"], irrelevant_source_count=identity_counts["irrelevant"], uncertain_source_count=identity_counts["uncertain"], source_type_counts=identity_type_counts, relevance_diagnostics=identity_relevance_diagnostics)
         traces.append(identity_entry)
+        self._update_execution_trace(rounds_completed=1)
         stop_reason = "max_rounds"
         if sources_found >= source_limit:
             stop_reason = "max_sources"
@@ -186,14 +234,25 @@ class IterativeResearchService:
             executed_queries.extend(query_strings)
             executed_keys.update(_query_key(query) for query in query_strings)
             pending_is_initial = False
+            self._update_execution_trace(
+                current_stage="research_search_started",
+                queries_executed=list(executed_queries),
+                sources_found=sources_found,
+            )
             raw_results = await self._search_round(current_queries, max_results_per_query=max_results_per_query)
             unique_results, duplicate_count, new_source_count = _unique_results(raw_results, seen_urls, seen_results, max(0, source_limit - sources_found))
             sources_found += new_source_count
+            self._update_execution_trace(
+                current_stage="research_search_completed",
+                sources_found=sources_found,
+            )
             failures: list[str] = []
             await self._hydrate_content(unique_results, failures)
-            round_ingested, type_counts, round_counts, round_summaries = await self._gate_and_ingest(unique_results, company, aggregate, ingested_urls)
+            round_ingested, type_counts, round_counts, round_summaries, relevance_diagnostics = await self._gate_and_ingest(unique_results, company, aggregate, ingested_urls)
+            warnings.extend(relevance_diagnostics.get("warnings", []))
             source_counts.update(type_counts)
             sources_ingested += round_counts["ingested"]
+            self._update_execution_trace(sources_ingested=sources_ingested)
             new_versions += round_counts["new_versions"]
             duplicate_versions += round_counts["duplicate_versions"]
             chunks_added += round_counts["chunks"]
@@ -214,8 +273,9 @@ class IterativeResearchService:
                 reason = followup.reason
             else:
                 new_terms, reason, pending = [], "Reached a configured hard limit.", []
-            entry = ResearchTraceEntry(round=round_number, queries=query_strings, results_count=len(raw_results), new_source_count=round_counts["ingested"], duplicate_source_count=duplicate_count, new_terms=new_terms, information_gaps=gaps, planner_reason=reason, content_retrieval_failures=failures, relevant_source_count=round_counts["relevant"], irrelevant_source_count=round_counts["irrelevant"], uncertain_source_count=round_counts["uncertain"], source_type_counts=type_counts)
+            entry = ResearchTraceEntry(round=round_number, queries=query_strings, results_count=len(raw_results), new_source_count=round_counts["ingested"], duplicate_source_count=duplicate_count, new_terms=new_terms, information_gaps=gaps, planner_reason=reason, content_retrieval_failures=failures, relevant_source_count=round_counts["relevant"], irrelevant_source_count=round_counts["irrelevant"], uncertain_source_count=round_counts["uncertain"], source_type_counts=type_counts, relevance_diagnostics=relevance_diagnostics)
             traces.append(entry)
+            self._update_execution_trace(rounds_completed=round_number)
             if sources_found >= source_limit:
                 stop_reason = "max_sources"
             elif followup is not None and not followup.should_continue:
@@ -231,13 +291,33 @@ class IterativeResearchService:
             entry.stop_reason = stop_reason
             break
 
+        self._update_execution_trace(current_stage="research_completed")
         return IterativeResearchResult(enterprise_name=enterprise_name, rounds=len(traces), queries_executed=executed_queries, sources_found=sources_found, sources_ingested=sources_ingested, new_versions=new_versions, duplicate_versions=duplicate_versions, knowledge_chunks_added=chunks_added, trace=traces, remaining_information_gaps=gaps, stop_reason=stop_reason, warnings=warnings, entity_resolution_status=identity.status, resolved_canonical_name=company.canonical_name, official_website=company.official_website, identity_evidence_count=len(identity.evidence_urls), identity_candidates=[x.model_dump(mode="json") for x in identity.identity_candidates], identity_trace=identity_trace.model_dump(mode="json"), relevant_source_count=relevant_total, irrelevant_source_count=irrelevant_total, uncertain_source_count=uncertain_total, source_type_counts=dict(source_counts))
+
+    def _update_execution_trace(self, **updates: object) -> None:
+        """Keep only non-content execution metadata for failure reporting."""
+        self.last_execution_trace.update(updates)
 
     def _empty_result(self, enterprise_name: str, *, stop_reason: str, status: str) -> IterativeResearchResult:
         return IterativeResearchResult(enterprise_name=enterprise_name, rounds=0, queries_executed=[], sources_found=0, sources_ingested=0, new_versions=0, duplicate_versions=0, knowledge_chunks_added=0, trace=[], remaining_information_gaps=[], stop_reason=stop_reason, entity_resolution_status=status)
 
-    async def _gate_and_ingest(self, results: list[SearchResult], company: Company, aggregate: dict, ingested_urls: set[str]):
-        decisions = await self.relevance_gate.assess(company, results)
+    async def _gate_and_ingest(
+        self,
+        results: list[SearchResult],
+        company: Company,
+        aggregate: dict,
+        ingested_urls: set[str],
+        *,
+        trusted_identity_urls: list[str] | None = None,
+    ):
+        self._update_execution_trace(current_stage="relevance_gate_started")
+        decisions = await self.relevance_gate.assess(
+            company, results, trusted_identity_urls=trusted_identity_urls
+        )
+        relevance_diagnostics = dict(
+            getattr(self.relevance_gate, "last_diagnostics", {}) or {}
+        )
+        self._update_execution_trace(current_stage="source_ingestion_started")
         result_by_url = {canonicalize_url(item.url): item for item in results}
         relevant, summaries, type_counts = [], [], Counter()
         counts = {"ingested": 0, "new_versions": 0, "duplicate_versions": 0, "chunks": 0, "relevant": 0, "irrelevant": 0, "uncertain": 0}
@@ -262,7 +342,8 @@ class IterativeResearchService:
             relevant.append(result)
             summaries.append(RetrievedSourceSummary(title=result.title, url=result.url, snippet=result.content[:700], content_scope=prepared.content_scope))
         aggregate.update({key: aggregate.get(key, 0) + value for key, value in counts.items()})
-        return relevant, dict(type_counts), counts, summaries
+        self._update_execution_trace(current_stage="source_ingestion_completed")
+        return relevant, dict(type_counts), counts, summaries, relevance_diagnostics
 
     async def _search_round(
         self, queries: list[RetrievalQuery], *, max_results_per_query: int

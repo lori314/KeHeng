@@ -32,6 +32,7 @@ class SourceType(StrEnum):
     COMPANY_OFFICIAL = "company_official"
     GOVERNMENT = "government"
     REGULATORY = "regulatory"
+    EXCHANGE_DISCLOSURE = "exchange_disclosure"
     PATENT = "patent"
     PAPER = "paper"
     STANDARD = "standard"

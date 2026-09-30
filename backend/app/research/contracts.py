@@ -135,6 +135,7 @@ class ResearchTraceEntry(BaseModel):
     irrelevant_source_count: int = 0
     uncertain_source_count: int = 0
     source_type_counts: dict[str, int] = Field(default_factory=dict)
+    relevance_diagnostics: dict[str, Any] = Field(default_factory=dict)
 
 
 class IterativeResearchResult(BaseModel):

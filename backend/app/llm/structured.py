@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import socket
 from collections.abc import Mapping
 from typing import Any, Protocol
@@ -11,10 +12,18 @@ from urllib.request import Request, urlopen
 
 
 class StructuredModelError(RuntimeError):
-    def __init__(self, category: str, message: str, *, raw_output: str | None = None):
+    def __init__(
+        self,
+        category: str,
+        message: str,
+        *,
+        raw_output: str | None = None,
+        diagnostics: list[dict[str, Any]] | None = None,
+    ):
         super().__init__(message)
         self.category = category
         self.raw_output = raw_output
+        self.diagnostics = diagnostics or []
 
 
 class StructuredJSONModel(Protocol):
@@ -33,6 +42,7 @@ class OpenAICompatibleStructuredModel:
         api_key: str,
         *,
         timeout: float = 60,
+        enable_thinking: bool | None = None,
     ) -> None:
         if not (endpoint.strip() and model.strip() and api_key.strip()):
             raise StructuredModelError(
@@ -42,21 +52,51 @@ class OpenAICompatibleStructuredModel:
         self.model = model.strip()
         self._api_key = api_key.strip()
         self.timeout = timeout
+        self.enable_thinking = enable_thinking
 
     async def complete_json(
         self, system_prompt: str, payload: Mapping[str, Any]
     ) -> dict[str, Any]:
         import asyncio
 
-        return await asyncio.to_thread(self._complete_sync, system_prompt, payload)
+        return await asyncio.to_thread(
+            self._complete_sync, system_prompt, payload, {"type": "json_object"}
+        )
+
+    async def complete_json_schema(
+        self,
+        system_prompt: str,
+        payload: Mapping[str, Any],
+        *,
+        schema_name: str,
+        schema: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Request strict JSON Schema output from compatible providers."""
+        import asyncio
+
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", schema_name)[:64] or "response"
+        response_format = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": safe_name,
+                "strict": True,
+                "schema": dict(schema),
+            },
+        }
+        return await asyncio.to_thread(
+            self._complete_sync, system_prompt, payload, response_format
+        )
 
     def _complete_sync(
-        self, system_prompt: str, payload: Mapping[str, Any]
+        self,
+        system_prompt: str,
+        payload: Mapping[str, Any],
+        response_format: Mapping[str, Any],
     ) -> dict[str, Any]:
         request_payload = {
             "model": self.model,
             "temperature": 0,
-            "response_format": {"type": "json_object"},
+            "response_format": response_format,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {
@@ -65,6 +105,8 @@ class OpenAICompatibleStructuredModel:
                 },
             ],
         }
+        if self.enable_thinking is not None:
+            request_payload["enable_thinking"] = self.enable_thinking
         endpoint = self.endpoint.rstrip("/")
         if not endpoint.endswith("/chat/completions"):
             endpoint += "/chat/completions"

@@ -1,21 +1,45 @@
-"""Registry-first technology-finance mapping with LLM-bounded evidence selection."""
-
-from pathlib import Path
+"""Deterministic registry-first technology-finance mapping."""
 
 from app.finance.contracts import MappingSelection, TechFinanceProfile
 from app.finance.registry import FinanceRegistry
 from app.knowledge.semantic.contracts import TechnologySemanticProfile
 from app.knowledge.semantic.registry import KnowledgeSemanticRegistry
-from app.knowledge.semantic.structured_call import complete_contract
-from app.llm import StructuredJSONModel
+
+
+def _milestone_strength(refs, milestones, *, required: bool) -> str:
+    """Derive finance evidence strength from the referenced technology milestones."""
+    if not refs:
+        return "insufficient_evidence" if required else "supported"
+    observations = []
+    for ref in refs:
+        key = tuple(ref.split(":", 1))
+        observation = milestones.get(key) if len(key) == 2 else None
+        if observation is None:
+            return "insufficient_evidence"
+        observations.append(observation)
+    statuses = {item.status for item in observations}
+    if "conflict" in statuses:
+        return "conflict"
+    if "limited_support" in statuses:
+        return "limited_support"
+    if "no_evidence" in statuses:
+        return "insufficient_evidence"
+    return "supported" if statuses == {"supported"} else "insufficient_evidence"
 
 
 class TechnologyFinanceMapper:
-    def __init__(self, model: StructuredJSONModel, registry: FinanceRegistry, prompt_path: str | Path | None = None, knowledge_registry: KnowledgeSemanticRegistry | None = None):
-        self.model, self.registry = model, registry
+    def __init__(self, registry: FinanceRegistry, knowledge_registry: KnowledgeSemanticRegistry | None = None):
+        self.registry = registry
         self.knowledge_registry = knowledge_registry or KnowledgeSemanticRegistry()
-        path = Path(prompt_path) if prompt_path else Path(__file__).resolve().parents[3] / "prompts" / "tech_finance_mapper_prompt.md"
-        self.prompt = path.read_text(encoding="utf-8")
+        self.last_execution_trace: dict[str, object] = {
+            "mapping_mode": "deterministic_registry",
+            "candidate_rule_count": 0,
+            "candidate_rule_ids": [],
+            "selected_rule_count": 0,
+            "selected_rule_ids": [],
+            "milestone_conditioned_candidate_count": 0,
+            "general_candidate_count": 0,
+        }
 
     async def map(self, technology: TechnologySemanticProfile, financial_facts: list, gaps: list[str], processor_version: str) -> TechFinanceProfile:
         for rule in self.registry.rules:
@@ -41,13 +65,18 @@ class TechnologyFinanceMapper:
         milestones = {(x.template_id, x.milestone_id): x for x in technology.milestone_observations}
         for rule in self.registry.rules:
             conditions = rule.applicable_conditions
+            requires_milestone = bool(conditions.get("milestone_any"))
             matching_observations = [
                 (key, obs) for key, obs in milestones.items()
                 if (not conditions.get("template_id") or key[0] == conditions["template_id"])
                 and (not conditions.get("milestone_any") or key[1] in conditions["milestone_any"])
-                and obs.status in {"supported", "limited_support", "conflict"}
+                and (obs.status == "supported" if requires_milestone else False)
             ]
             milestone_refs = [f"{tpl}:{mid}" for (tpl, mid), _ in matching_observations]
+            milestone_candidates = [
+                {"ref": ref, "status": observation.status}
+                for ref, (_, observation) in zip(milestone_refs, matching_observations, strict=True)
+            ]
             tech_ids = list(dict.fromkeys(
                 fact_id
                 for _, observation in matching_observations
@@ -56,17 +85,38 @@ class TechnologyFinanceMapper:
             ))
             dimension_filter = conditions.get("financial_dimension_any")
             fin_ids = [fact.fact_id for fact in financial_facts if not dimension_filter or fact.financial_dimension in dimension_filter]
-            if (tech_ids or fin_ids) and (not conditions.get("template_id") or milestone_refs):
-                candidates.append({"rule": rule.model_dump(mode="json"), "technology_fact_ids": tech_ids, "milestone_refs": milestone_refs, "financial_fact_ids": fin_ids})
-        selected = MappingSelection(selections=[])
-        if candidates:
-            selected = await complete_contract(self.model, self.prompt, {"candidates": candidates, "available_technology_fact_ids": list(facts_by_id), "available_financial_fact_ids": list(financial_by_id), "available_milestone_refs": list(milestones), "allowed_rule_ids": [x["rule"]["rule_id"] for x in candidates], "allowed_scenario_ids": list(self.registry.scenario_by_id)}, MappingSelection, stage="technology-finance mapper")
-        return self._assemble(technology, financial_facts, gaps, processor_version, selected, candidates, facts_by_id, financial_by_id, milestones)
-
-    @staticmethod
-    def _milestone_hints(template_id: str | None, milestone_id: str) -> list[str]:
-        # The selection step is constrained by the actual profile milestone; template rule IDs and milestone IDs are checked again below.
-        return [milestone_id]
+            if (tech_ids or fin_ids) and (not requires_milestone or milestone_refs):
+                candidates.append({"rule": rule.model_dump(mode="json"), "technology_fact_ids": tech_ids, "milestone_refs": milestone_refs, "milestones": milestone_candidates, "financial_fact_ids": fin_ids})
+        candidate_ids = list(dict.fromkeys(x["rule"]["rule_id"] for x in candidates))
+        milestone_count = sum(bool(x["rule"]["applicable_conditions"].get("milestone_any")) for x in candidates)
+        general_count = len(candidates) - milestone_count
+        selections = [
+            {
+                "rule_id": entry["rule"]["rule_id"],
+                "scenario_id": entry["rule"]["scenario_id"],
+                "technology_fact_ids": list(dict.fromkeys(entry["technology_fact_ids"])),
+                "milestone_refs": list(dict.fromkeys(entry["milestone_refs"])),
+                "financial_fact_ids": list(dict.fromkeys(entry["financial_fact_ids"])),
+                "observation_kinds": list(dict.fromkeys(entry["rule"]["output_type"])),
+            }
+            for entry in candidates
+        ]
+        selected = MappingSelection(selections=selections)
+        self.last_execution_trace = {
+            "mapping_mode": "deterministic_registry",
+            "mapping_status": "completed",
+            "candidate_rule_count": len(candidate_ids),
+            "candidate_rule_ids": candidate_ids,
+            "selected_rule_count": len(candidate_ids),
+            "selected_rule_ids": candidate_ids,
+            "milestone_conditioned_candidate_count": milestone_count,
+            "general_candidate_count": general_count,
+        }
+        try:
+            return self._assemble(technology, financial_facts, gaps, processor_version, selected, candidates, facts_by_id, financial_by_id, milestones)
+        except Exception:
+            self.last_execution_trace["mapping_status"] = "failed"
+            raise
 
     def _assemble(self, technology, financial_facts, gaps, processor_version, selected, candidates, tech_by_id, fin_by_id, milestones):
         from datetime import datetime, timezone
@@ -77,43 +127,68 @@ class TechnologyFinanceMapper:
         for selection in selected.selections:
             entry = candidate_by_rule.get(selection.rule_id)
             if entry is None:
-                raise ValueError(f"mapping returned rule outside applicable registry candidates: {selection.rule_id}")
+                raise RuntimeError(f"deterministic mapping invariant violated: rule outside candidates: {selection.rule_id}")
             rule = self.registry.rule_by_id[selection.rule_id]
             if selection.scenario_id and selection.scenario_id not in self.registry.scenario_by_id:
-                raise ValueError(f"mapping returned unknown scenario: {selection.scenario_id}")
+                raise RuntimeError(f"deterministic mapping invariant violated: unknown scenario: {selection.scenario_id}")
             if selection.scenario_id != rule.scenario_id:
-                raise ValueError(f"scenario does not match registry rule {rule.rule_id}")
+                raise RuntimeError(f"deterministic mapping invariant violated: scenario mismatch for {rule.rule_id}")
             if not set(selection.observation_kinds).issubset(set(rule.output_type)):
-                raise ValueError(f"mapping selected output not allowed by rule {rule.rule_id}")
+                raise RuntimeError(f"deterministic mapping invariant violated: output kind mismatch for {rule.rule_id}")
             if not set(selection.technology_fact_ids).issubset(entry["technology_fact_ids"]) or not set(selection.technology_fact_ids).issubset(tech_by_id):
-                raise ValueError("mapping returned an unsupported technology fact reference")
+                raise RuntimeError("deterministic mapping invariant violated: unsupported technology fact reference")
             if not set(selection.financial_fact_ids).issubset(entry["financial_fact_ids"]) or not set(selection.financial_fact_ids).issubset(fin_by_id):
-                raise ValueError("mapping returned an unsupported financial fact reference")
+                raise RuntimeError("deterministic mapping invariant violated: unsupported financial fact reference")
             if not set(selection.milestone_refs).issubset(entry["milestone_refs"]):
-                raise ValueError("mapping returned an unsupported milestone reference")
-            if not selection.technology_fact_ids and not selection.financial_fact_ids:
-                raise ValueError("mapping selection must cite source facts")
+                raise RuntimeError("deterministic mapping invariant violated: unsupported milestone reference")
+            conditions = rule.applicable_conditions
+            requires_milestone = bool(conditions.get("milestone_any"))
+            selected_milestone_refs = list(selection.milestone_refs)
+            if requires_milestone and not selected_milestone_refs:
+                selected_milestone_refs = list(entry["milestone_refs"])
+            selected_milestone_refs = list(dict.fromkeys(selected_milestone_refs))
+            required_milestone_fact_ids = list(dict.fromkeys(
+                fact_id
+                for ref in selected_milestone_refs
+                for fact_id in (
+                    milestones[tuple(ref.split(":", 1))].supporting_fact_ids
+                    + milestones[tuple(ref.split(":", 1))].contradicting_fact_ids
+                )
+            ))
+            if not set(required_milestone_fact_ids).issubset(entry["technology_fact_ids"]):
+                raise RuntimeError("deterministic mapping invariant violated: candidate omitted milestone provenance facts")
+            if not set(required_milestone_fact_ids).issubset(tech_by_id):
+                raise RuntimeError("deterministic mapping invariant violated: milestone fact record missing")
+            technology_fact_ids = list(dict.fromkeys(required_milestone_fact_ids + list(selection.technology_fact_ids)))
+            if not technology_fact_ids and not selection.financial_fact_ids:
+                raise RuntimeError("deterministic mapping invariant violated: selection has no source facts")
             rules.append(rule.rule_id)
             if rule.scenario_id:
                 scenarios.append(rule.scenario_id)
-            bundle = EvidenceBundle(technology_fact_ids=selection.technology_fact_ids, milestone_refs=selection.milestone_refs, financial_fact_ids=selection.financial_fact_ids, rule_ids=[rule.rule_id])
-            weak_finance = any(fin_by_id[x].source_quality.category == "snippet_only" for x in selection.financial_fact_ids)
-            linked_tech_qualities = [tech_by_id[x].source_quality.category for x in selection.technology_fact_ids]
+            bundle = EvidenceBundle(technology_fact_ids=technology_fact_ids, milestone_refs=selected_milestone_refs, financial_fact_ids=selection.financial_fact_ids, rule_ids=[rule.rule_id])
+            finance_qualities = [fin_by_id[x].source_quality.category for x in selection.financial_fact_ids]
+            weak_finance = bool(finance_qualities) and all(x in {"snippet_only", "weak_web"} for x in finance_qualities)
+            linked_tech_qualities = [tech_by_id[x].source_quality.category for x in technology_fact_ids]
             weak_technology = bool(linked_tech_qualities) and all(x in {"snippet_only", "weak_web"} for x in linked_tech_qualities)
-            conflicted_refs = [
-                ref for ref in selection.milestone_refs
-                if milestones[tuple(ref.split(":", 1))].status == "conflict"
-            ]
-            incomplete_conflict = any(
-                not set(milestones[tuple(ref.split(":", 1))].supporting_fact_ids).issubset(selection.technology_fact_ids)
-                or not set(milestones[tuple(ref.split(":", 1))].contradicting_fact_ids).issubset(selection.technology_fact_ids)
-                for ref in conflicted_refs
-            )
-            status = "conflict" if conflicted_refs and not incomplete_conflict else ("limited_support" if weak_finance or weak_technology or conflicted_refs else "supported")
-            if "funding_activity" in selection.observation_kinds and rule.funding_activities:
+            milestone_status = _milestone_strength(selected_milestone_refs, milestones, required=requires_milestone)
+            if milestone_status in {"conflict", "limited_support", "insufficient_evidence"}:
+                status = milestone_status
+            elif weak_finance or weak_technology:
+                status = "limited_support"
+            else:
+                status = "supported"
+            if "funding_activity" in selection.observation_kinds and rule.funding_activities and milestone_status == "supported":
                 activities.append(FinancingActivityObservation(status=status, scenario_id=rule.scenario_id, funding_activities=rule.funding_activities, reason=rule.description, evidence_bundle=bundle))
             if "risk" in selection.observation_kinds and rule.risk_theme:
-                risks.append(FinanceRiskObservation(status=status, risk_theme=rule.risk_theme, reason=rule.risk_reason or rule.description, missing_information=rule.gap_dimensions, evidence_bundle=bundle))
+                if milestone_status == "conflict":
+                    reason = "触发里程碑存在冲突证据，当前不能确认其状态；以下内容仅作为冲突核验关注点。"
+                elif milestone_status == "limited_support":
+                    reason = "触发里程碑仅获得有限支持，不能认定该里程碑已经发生；以下内容仅作为后续核验关注点。"
+                elif milestone_status == "insufficient_evidence" and requires_milestone:
+                    reason = "触发里程碑缺少可验证证据；以下内容仅作为待核验关注点。"
+                else:
+                    reason = rule.risk_reason or rule.description
+                risks.append(FinanceRiskObservation(status=status, risk_theme=rule.risk_theme, reason=reason, missing_information=rule.gap_dimensions, evidence_bundle=bundle))
             if "monitoring" in selection.observation_kinds:
                 for item in rule.monitoring_nodes:
                     monitors.append(MonitoringNode(**item, status=status, evidence_bundle=bundle))

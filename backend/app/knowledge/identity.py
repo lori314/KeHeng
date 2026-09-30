@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -138,6 +138,23 @@ def knowledge_chunk_id_for(
         sort_keys=True,
     )
     return _prefixed_hash("kch", payload)
+
+
+def derived_fact_chunk_id_for(source_version_id: str, fact_id: str) -> str:
+    """Return the stable chunk identity for one derived technology fact."""
+
+    if not source_version_id.strip() or not fact_id.strip():
+        raise ValueError("source_version_id and fact_id are required")
+    material = f"derived_fact\0technology_fact\0{source_version_id}\0{fact_id}"
+    return _prefixed_hash("kch", material)
+
+
+def ensure_unique_chunk_ids(chunk_ids: Iterable[str]) -> None:
+    """Reject ambiguous duplicate chunk identities before persistence/indexing."""
+
+    identifiers = list(chunk_ids)
+    if len(identifiers) != len(set(identifiers)):
+        raise ValueError("Duplicate KnowledgeChunk IDs in one source-version upsert batch")
 
 
 def citation_id_for(

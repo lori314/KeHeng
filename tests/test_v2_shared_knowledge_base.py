@@ -28,6 +28,7 @@ from app.knowledge.contracts import (  # noqa: E402
 from app.knowledge.identity import (  # noqa: E402
     citation_id_for,
     canonicalize_url,
+    derived_fact_chunk_id_for,
     knowledge_chunk_id_for,
     source_id_for,
     source_version_for,
@@ -161,6 +162,35 @@ class SharedKnowledgeBaseTest(unittest.IsolatedAsyncioTestCase):
             "sources": 1, "source_versions": 1, "current_versions": 1, "knowledge_chunks": 1
         })
         self.assertEqual(self.kb._collection.count(), 1)
+
+    async def test_duplicate_chunk_ids_are_rejected_before_repository_or_chroma(self):
+        source, version, chunks = web_snapshot(
+            "https://example.com/duplicate-batch",
+            "一条合成来源证据",
+            KnowledgeLayer.GENERAL,
+        )
+        with self.assertRaisesRegex(ValueError, "Duplicate KnowledgeChunk IDs"):
+            await self.kb.upsert_source_version(source, version, [chunks[0], chunks[0]])
+        with self.assertRaisesRegex(ValueError, "Duplicate KnowledgeChunk IDs"):
+            self.kb.repository.upsert_source_version(
+                source, version, [chunks[0], chunks[0]]
+            )
+        self.assertEqual(self.kb.repository.counts(source.source_id)["knowledge_chunks"], 0)
+        self.assertEqual(self.kb._collection.count(), 0)
+
+    async def test_derived_fact_chunk_identity_is_stable_and_fact_specific(self):
+        self.assertEqual(
+            derived_fact_chunk_id_for("sv_test", "tf_same"),
+            derived_fact_chunk_id_for("sv_test", "tf_same"),
+        )
+        self.assertNotEqual(
+            derived_fact_chunk_id_for("sv_test", "tf_product_launch"),
+            derived_fact_chunk_id_for("sv_test", "tf_customer_validation"),
+        )
+        self.assertEqual(
+            derived_fact_chunk_id_for("sv_test", "tf_same").split("_", 1)[0],
+            "kch",
+        )
 
     async def test_new_content_preserves_history_but_search_returns_current_only(self):
         old = web_snapshot(
