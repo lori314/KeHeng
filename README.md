@@ -1,20 +1,16 @@
 # KeHeng（科衡）
 
-KeHeng 是一个本地运行的科技企业资料分析原型，用于把 PDF 文本、可定位证据、指标观察和报告串在一起，供竞赛演示与人工复核。它不是授信、投资或融资决策工具，也不提供企业事实的权威认定。
+KeHeng（科衡）是科技企业证据增强智能尽调原型。当前 Web 主流程从企业名称启动 V2 Evidence Analysis Task，检索公开资料并形成带来源、定位信息与边界说明的 Evidence-First Report。系统用于辅助尽调，不替代人工核验或正式决策。
 
-## 当前可运行模式
+## 当前 Web 主流程
 
-| 模式 | 实际行为 | 是否调用模型 |
-| --- | --- | --- |
-| 规则演示 | 上传 PDF，运行本地检索和技术指标规则；不生成产业分析；缺证据时保留未评分状态 | 否 |
-| 真实模型 | 用同一上传与分析服务运行技术、产业模块并生成综合报告；Provider、提示词、检索及评分配置由后端控制 | 是，需后端配置 |
-| 本机历史报告（可选） | 读取仓库作者本地保存的 NIO 历史结果；只读回放，公开快照没有这份私有运行记录 | 否 |
+输入企业名称 → 创建 Evidence Analysis Task → 公开资料检索 → 技术语义处理 → 科技金融映射 → 证据断言 → Evidence-First Report。报告优先展示事实、来源、证据定位、有限支持状态和待补充信息，不提供综合评分。
 
-模型的结构化输出和引用存在性校验不等于人工确认或语义支持验证。企业资料未检出证据时不能据此推断企业不具备相关能力。规则演示只覆盖技术模块，不会伪造产业分数。真实模型配置缺失或调用失败时显示系统错误，不会静默回退到规则模式。
+旧 PDF 上传及评分 API 仍保留在后端供兼容使用，但不再作为前端主入口。V2 需要配置真实 LLM 与 Web Search provider；缺少 provider 时 API 会返回配置错误，不会静默切换到合成或规则结果。
 
 ## 快速开始（Windows PowerShell）
 
-要求 Python 3.12+、Node.js 22+ 和 npm。首次安装需要访问 Python 包索引与 npm registry；分析 PDF 和规则演示本身无需联网。
+要求 Python 3.12+、Node.js 22+ 和 npm。首次安装需要访问 Python 包索引与 npm registry；V2 分析需要访问配置的 LLM 与 Web Search 服务。
 
 ```powershell
 # 从仓库根目录执行
@@ -32,13 +28,9 @@ npm run dev -- --host 127.0.0.1
 
 打开 <http://127.0.0.1:5173>。不要在前端配置或提交 API Key。
 
-## 三种使用方式
+## 旧版兼容流程
 
-### 1. 无密钥规则演示
-
-网页选择“规则演示”，上传项目自有合成资料 `data/examples/public_test_company_technology_profile.pdf`。它描述完全虚构的启衡智造技术有限公司。此模式只运行技术规则分析，不请求云服务。
-
-也可运行同一合成 PDF 的 CLI 端到端样例：
+后端仍保留 PDF 上传与 score-centric API，合成 PDF CLI 示例也可单独运行；这些入口不是当前 Web 主产品流程：
 
 ```powershell
 backend/.venv/Scripts/python.exe scripts/run_technology_demo.py
@@ -46,24 +38,20 @@ backend/.venv/Scripts/python.exe scripts/run_technology_demo.py
 
 每次命令在 `runtime/demo_runs/run-*` 创建新目录，不覆盖已有运行或 `data/examples/` 中的文件。结果包括技术分析、确定性评价和报告 JSON。
 
-### 2. 本机历史真实模型报告回放（可选）
-
-有权限的开发机可以从网页打开“NIO 已保存模型报告”。这只读取 `runtime/review/paired_model/` 中已经保存的响应，不会再请求模型。历史运行目录不随公开文件快照分发，因此此入口在干净克隆中不可用；它不是产品的主演示路径。
-
-### 3. 配置真实模型
+## 配置 V2 服务
 
 将 `backend/.env.example` 复制为 `backend/.env`，只在本地填写以下后端变量：
 
 ```dotenv
-KEHENG_AGENT_MODE=llm
-KEHENG_RETRIEVAL_MODE=hash
 KEHENG_LLM_ENDPOINT=
 KEHENG_LLM_MODEL=
 KEHENG_LLM_API_KEY=
 KEHENG_LLM_TIMEOUT_SECONDS=120
+KEHENG_WEB_SEARCH_PROVIDER=tavily
+KEHENG_TAVILY_API_KEY=
 ```
 
-密钥仅保留在后端本地环境。重新启动后端，在网页选择“真实模型”。当前默认检索为 `hash`；`bm25` 可通过 `KEHENG_RETRIEVAL_MODE=bm25` 配置为候选方案。现有样本不足以证明 BM25 全面优于 hash。模型 ID、服务端点、温度和提示词版本应与每次实验结果一起记录。
+密钥仅保留在后端本地环境。重新启动后端后，首页输入企业名称即可启动 V2 分析。V2 API 为 `POST /api/evidence-analysis`、`GET /api/evidence-analysis/{task_id}` 和只读报告 `GET /api/report/v2/company/{company_id}`。
 
 实验脚本也只接受显式的 `KEHENG_LLM_API_KEY` 环境变量，不会从仓库根目录的 CSV 或其它个人文件自动发现密钥。
 
@@ -91,6 +79,8 @@ npm run build
 - 前端依赖锁：`frontend/package-lock.json`，使用 `npm ci`。
 - 无密钥配置模板：`backend/.env.example`。
 - API 默认地址：<http://127.0.0.1:8000>；Swagger：<http://127.0.0.1:8000/docs>。
+- V2 名称检索分析任务：`POST /api/evidence-analysis` 创建、`GET /api/evidence-analysis/{task_id}` 轮询；完成时响应含 V2 evidence-first report。
+- V2 报告刷新：`GET /api/report/v2/company/{company_id}`。旧 PDF `/analysis/*` 入口保持原 score-centric demo 流程，不自动切换。
 - 所有演示及分析产物写入新的 `runtime/` 子目录；旧结果只读。
 - 当前真实模型证据上下文使用 `balanced_sentences_v1`：最多 8 个片段、4,160 个证据文本字符，按查询组轮转并去重句子。预算单位是字符，不是 token。此策略通过离线历史上下文回放与合成回归；其对真实模型质量的收益尚未验证。历史 CATL 检索到但未送入上下文的问题未据此宣称修复。
 

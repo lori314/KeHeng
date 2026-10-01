@@ -247,6 +247,10 @@ Finance mapper 的规则适用性与证据绑定为确定性 registry-first 流�
 
 `EvidenceFirstReportAssembler` 不调用 LLM，也不新增 prompt 或推断；它校验 profile 链、确定性排序和选择代表事实、复制 Citation/Source provenance，并展开 Finance evidence bundle。Profile 引用缺失、source 无法解析或 profile 版本链不一致时返回错误，不降级成无来源事实。报告中的 representative 仅为展示排序，不代表事实优先级裁决；multi-source/conflict 状态直接沿用 Assertion profile。该层没有评分或自动授信结论。
 
+## V2 Production Orchestration
+
+`EvidenceAnalysisService` 复用现有 RetrievalPlanner/ResearchService、TechnologyKnowledgeProcessor、TechnologyFinanceProcessor、EvidenceAssertionProcessor 与 EvidenceFirstReportAssembler，按固定顺序各执行一次，不新增 prompt 或 provider 配置。生产默认 provider 来自现有 `Settings`；服务向 task manager 发出的进度仅含 round/source/fact count 与 profile/report ID。Service task result 的 ResearchSummary 为安全计数摘要；搜索原文、prompt、raw provider response 和凭据不进入 Web contract。Review CLI 可从 service 的进程内执行上下文生成诊断工件，但该上下文不参与 API 序列化。
+
 ### Assertion v2 的可解释归并规则
 
 该层仍不调用 LLM。主体只接受 repository Company 中的 canonical name/aliases 精确匹配，以及“公司/本公司/该公司/企业/本企业/该企业”等有限代词；产品名不按包含关系归成企业。期间显式年份、半年和季度采用封闭格式表，其他表达保留原样且不据此推断年份。文本比较会先检查双方显式数字和英数型号 anchor；任何 guard 不同均拒绝 fuzzy merge。Technology object 使用 0.72 3-gram 阈值、满足长度条件的 containment 和 predicate 辅助门槛；Finance 非量化事实默认 0.78，industry/core_business 要求 exact、至少 0.75 containment ratio 或至少 0.85 Jaccard。无明确 period/event 的融资文本只允许近乎一致表述归并；无明确时间的不同财务值不判 conflict。

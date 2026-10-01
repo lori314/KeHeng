@@ -355,8 +355,8 @@ class EndToEndReviewRunnerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             run_dir = Path(temp) / "partial-review"
             with (
-                patch("run_end_to_end_review.OpenAICompatibleStructuredModel", return_value=FakeModel()),
-                patch("run_end_to_end_review.TavilySearchProvider", return_value=FakeSearch()),
+                patch("app.services.evidence_analysis_service.OpenAICompatibleStructuredModel", return_value=FakeModel()),
+                patch("app.services.evidence_analysis_service.TavilySearchProvider", return_value=FakeSearch()),
             ):
                 review = asyncio.run(execute_review(args, settings, run_dir, "partial-run"))
 

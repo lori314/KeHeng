@@ -1,709 +1,129 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { createEvidenceAnalysis, getEvidenceAnalysis, getEvidenceReport } from "./api";
+import type { EvidenceAnalysisTaskResponse, EvidenceFirstReport, EvidenceStage, ReportCitation, ReportEvidenceBundle, ReportFact } from "./types";
 
-type NullableScore = number | null;
-type AnalysisStatus = "processing" | "completed" | "partial" | "failed";
-type ProductMode = "rule_demo" | "real_model";
-
-interface ReportEvidence {
-  evidence_id: string;
-  document_name: string;
-  page_number: number | null;
-  chunk_id: string;
-  excerpt: string;
-  retrieval_score: number;
-}
-
-interface ReportFinding {
-  content: string;
-  evidence: ReportEvidence[];
-}
-
-interface IndicatorAssessment {
-  score: NullableScore;
-  evidence: string[];
-  rationale: string;
-}
-
-interface ScoreExplanation {
-  indicator_id?: string;
-  indicator_name?: string;
-  status: string;
-  input_score?: number;
-  weight?: number;
-  weighted_score?: number | null;
-  calculation?: string;
-  indicator_version?: string;
-  weight_version?: string;
-  reason?: string;
-}
-
-interface TechnologyReport {
-  task_id: string | null;
-  enterprise_name: string;
-  title: string;
-  summary: string;
-  technology_score: NullableScore;
-  dimension_scores: Record<string, NullableScore>;
-  strengths: ReportFinding[];
-  risks: ReportFinding[];
-  evaluation_details: {
-    indicators: Record<string, IndicatorAssessment>;
-    score_explanation: ScoreExplanation[];
-    evidence_mapping: unknown[];
-  };
-  references: ReportEvidence[];
-  industry_score?: NullableScore;
-  overall_score?: NullableScore;
-  assessment_status?: string;
-  evidence_coverage?: Record<string, number>;
-  industry_analysis?: { indicators?: Record<string, IndicatorAssessment>; evaluation_details?: Record<string, unknown> };
-}
-
-interface ModuleResult { status: string; reason?: string; failure?: { code: string; category?: string; message: string }; analysis?: Record<string, any>; result?: Record<string, any>; evaluation?: Record<string, any> }
-interface ModuleFailure { code: string; category?: string; message: string; validation_errors?: Array<{ field: string; type: string; message: string }> }
-
-interface AnalysisCreateResponse {
-  task_id: string;
-  status: AnalysisStatus;
-}
-
-interface AnalysisTaskResponse {
-  task_id: string;
-  status: AnalysisStatus;
-  enterprise_name: string;
-  file_name: string;
-  report: TechnologyReport | null;
-  error: { code: string; message: string } | null;
-  modules: Record<string, ModuleResult>;
-  module_failures: Record<string, ModuleFailure>;
-  run_info: Record<string, any>;
-  request_mode: ProductMode;
-  result_status?: string;
-}
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
-
-const dimensionLabels: Record<string, string> = {
-  innovation: "创新维度",
-  ip: "知识产权",
-  maturity: "技术成熟度",
+const stageLabels: Record<EvidenceStage, string> = {
+  queued: "等待开始", research: "公开资料检索与主体核验", technology_semantic: "技术证据识别",
+  technology_finance: "技术—经营证据映射", evidence_assertions: "多源证据整理", evidence_first_report: "尽调报告生成",
+  complete: "分析完成", failed: "分析失败",
 };
-
-const indicatorLabels: Record<string, string> = {
-  technical_autonomy: "技术自主性",
-  innovation_capability: "创新能力",
-  intellectual_property: "知识产权能力",
-  technical_maturity: "技术成熟度",
+const pipeline: EvidenceStage[] = ["research", "technology_semantic", "technology_finance", "evidence_assertions", "evidence_first_report"];
+const factTypeLabels: Record<string, string> = {
+  product_launch: "产品发布", technical_capability: "技术能力", technical_specification: "技术规格", patent_grant: "专利授权",
+  patent_portfolio: "专利组合", tapeout: "流片", silicon_validation: "芯片验证", customer_validation: "客户验证",
+  mass_production: "规模量产", deployment: "部署应用",
 };
+const qualityLabels: Record<string, string> = { first_party: "企业一方来源", authoritative_public_record: "权威公开记录", weak_web: "普通网页", snippet_only: "搜索摘要" };
+const statusClass: Record<string, string> = { supported: "supported", limited_support: "limited", conflict: "conflict", no_evidence: "none" };
 
-function formatScore(score: NullableScore) {
-  return score === null ? "未评分" : score.toFixed(score % 1 === 0 ? 0 : 2);
+function Header() { return <header className="topbar"><a className="brand" href="/" aria-label="科衡首页"><span className="brand-mark">科</span><span><strong>科衡</strong><small>KeHeng · Evidence V2</small></span></a><div className="product-title">科技企业证据增强智能尽调系统</div></header>; }
+function Footer() { return <footer className="site-footer"><span>KeHeng · 科衡</span><span>公开证据增强分析不替代人工尽调与正式决策</span></footer>; }
+
+function StartPage({ name, onName, onSubmit, busy, error }: { name: string; onName: (v: string) => void; onSubmit: (e: FormEvent) => void; busy: boolean; error: string | null }) {
+  return <div className="app-shell"><Header/><main className="start-main"><section className="start-hero"><p className="eyebrow">EVIDENCE FIRST · TECHNOLOGY DUE DILIGENCE</p><h1>让科技企业尽调<br/><em>回到证据与规则</em></h1><p className="hero-copy">输入企业名称，科衡将检索公开资料，识别技术领域与技术阶段，整理经营和财务事实，并构建可追溯的技术—金融证据链。</p><form className="start-form" onSubmit={onSubmit}><label htmlFor="enterprise-name">企业名称</label><input id="enterprise-name" value={name} onChange={(e) => onName(e.target.value)} maxLength={300} placeholder="请输入企业法定名称" disabled={busy}/><button className="primary-button" type="submit" disabled={busy}>{busy ? "正在启动…" : "开始证据尽调"}</button><small>仅需企业名称即可启动。系统将基于公开资料构建证据链；未找到公开证据不代表事项不存在。</small></form>{error && <div className="inline-error" role="alert">{error}</div>}</section><section className="workflow" aria-label="分析流程">{["公开资料检索", "技术证据识别", "技术—经营映射", "证据聚合", "尽调报告"].map((item, i) => <div className="workflow-item" key={item}><span>{String(i + 1).padStart(2, "0")}</span><strong>{item}</strong>{i < 4 && <b aria-hidden="true">→</b>}</div>)}</section><div className="start-note"><span className="note-mark">i</span><p>系统整理公开信息并展示证据边界。所有技术与经营判断均应结合原始材料进行人工核验。</p></div></main><Footer/></div>;
 }
 
-function ModuleFailureNotice({ domain, failure }: { domain: string; failure: ModuleFailure }) {
-  return <div className="inline-error"><p>{domain}模块失败：{failure.message}</p>{failure.validation_errors?.length ? <details><summary>结构化校验诊断</summary><ul>{failure.validation_errors.map((item, index) => <li key={`${item.field}-${index}`}>{item.field} · {item.type} · {item.message}</li>)}</ul></details> : null}</div>;
+function ProgressPage({ task, onReset }: { task: EvidenceAnalysisTaskResponse; onReset: () => void }) {
+  const current = task.current_stage === "queued" ? 0 : pipeline.indexOf(task.current_stage);
+  return <div className="app-shell"><Header/><main className="progress-main"><p className="eyebrow">EVIDENCE WORKFLOW</p><h1>正在构建证据链</h1><p className="company-name">{task.enterprise_name}</p><p className="stage-current" role="status">{stageLabels[task.current_stage]}</p><ol className="stage-list">{pipeline.map((stage, i) => { const done = current > i; const active = current === i; return <li className={done ? "done" : active ? "active" : "pending"} key={stage}><span className="stage-symbol" aria-hidden="true">{done ? "✓" : active ? "●" : "○"}</span><span>{stageLabels[stage]}</span></li>; })}</ol><p className="muted">任务编号：{task.task_id}</p><button className="secondary-button" type="button" onClick={onReset}>返回首页</button></main><Footer/></div>;
 }
 
-function AppHeader({ badge }: { badge: string }) {
-  return (
-    <header className="topbar">
-      <a className="brand" href="#top" aria-label="科衡首页">
-        <span className="brand-mark">科</span>
-        <span>
-          <strong>科衡</strong>
-          <small>KeHeng · v0.7</small>
-        </span>
-      </a>
-      <div className="product-title">科技企业智能尽调与价值评估系统</div>
-      <span className="stage-badge">{badge}</span>
-    </header>
-  );
+function CitationDisclosure({ citation }: { citation: ReportCitation }) {
+  const location = citation.page_number !== null ? `第 ${citation.page_number} 页` : citation.paragraph_number !== null ? `第 ${citation.paragraph_number} 段` : citation.locator_text ?? "未提供精确位置";
+  return <details className="citation"><summary><span>{citation.source_title ?? citation.source_type}</span><small>{qualityLabels[citation.source_quality] ?? citation.source_quality} · {location}</small></summary><div className="citation-body">{citation.excerpt && <blockquote>{citation.excerpt}</blockquote>}<div className="citation-meta"><span>chunk · {citation.chunk_id}</span><span>citation · {citation.citation_id}</span></div>{citation.source_url && <a href={citation.source_url} target="_blank" rel="noreferrer">打开原始来源 ↗</a>}</div></details>;
 }
 
-function EvidenceDisclosure({ evidence }: { evidence: ReportEvidence }) {
-  return (
-    <details className="evidence-disclosure">
-      <summary>
-        <span className="evidence-id">{evidence.evidence_id}</span>
-        <span>{evidence.document_name}</span>
-        <small>
-          {evidence.page_number === null ? "页码未知" : `第 ${evidence.page_number} 页`}
-        </small>
-      </summary>
-      <div className="evidence-content">
-        <p>{evidence.excerpt}</p>
-        <footer>
-          <span>片段 {evidence.chunk_id}</span>
-          <span>检索相关度 {evidence.retrieval_score.toFixed(4)}</span>
-        </footer>
-      </div>
-    </details>
-  );
+function FactCard({ fact }: { fact: ReportFact }) {
+  return <article className="fact-card"><div className="fact-type">{factTypeLabels[fact.fact_type] ?? fact.fact_type}</div><h3>{fact.subject} · {fact.predicate}</h3><p>{fact.object_value}</p><div className="fact-meta">{fact.period && <span>{fact.period}</span>}{fact.event_time && <span>{new Date(fact.event_time).toLocaleDateString("zh-CN")}</span>}<span>{qualityLabels[fact.source_quality] ?? fact.source_quality}</span></div><CitationDisclosure citation={fact.evidence}/></article>;
 }
 
-function FindingSection({
-  title,
-  eyebrow,
-  findings,
-  tone,
-}: {
-  title: string;
-  eyebrow: string;
-  findings: ReportFinding[];
-  tone: "positive" | "risk";
-}) {
-  return (
-    <section className={`finding-section ${tone}`}>
-      <div className="section-kicker">{eyebrow}</div>
-      <h2>{title}</h2>
-      {findings.length === 0 ? (
-        <p className="empty-finding">当前材料未形成有充分证据的相关结论。</p>
-      ) : (
-        <div className="finding-list">
-          {findings.map((finding, index) => (
-            <article className="finding-card" key={`${tone}-${index}`}>
-              <div className="finding-number">{String(index + 1).padStart(2, "0")}</div>
-              <div>
-                <h3>{finding.content}</h3>
-                <div className="finding-evidence">
-                  {finding.evidence.map((evidence) => (
-                    <EvidenceDisclosure
-                      evidence={evidence}
-                      key={`${index}-${evidence.evidence_id}`}
-                    />
-                  ))}
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-    </section>
-  );
+function EvidenceBundleDisclosure({ bundle }: { bundle: ReportEvidenceBundle }) {
+  const count = bundle.technology_facts.length + bundle.financial_facts.length + bundle.milestones.length;
+  return <details className="bundle"><summary>查看证据依据（{count}）</summary><div className="bundle-content">{bundle.technology_facts.map((f) => <FactCard key={f.fact_id} fact={f}/>)}{bundle.milestones.map((m) => <p key={`${m.template_id}-${m.milestone_id}`}>{m.milestone_name} · {m.status_label}</p>)}{bundle.financial_facts.map((f) => <FactCard key={f.fact_id} fact={f}/>)}{bundle.rule_ids.length > 0 && <small>规则：{bundle.rule_ids.join("、")}</small>}</div></details>;
 }
 
-function DomainIndicatorPanel({
-  title, indicators, evidenceById,
-}: {
-  title: string;
-  indicators: Record<string, IndicatorAssessment>;
-  evidenceById: Map<string, ReportEvidence>;
-}) {
-  const labels: Record<string, string> = { ...indicatorLabels, market_potential: "市场潜力", industry_growth: "行业成长性", competitive_position: "竞争位置", policy_environment: "政策环境" };
-  if (!Object.keys(indicators).length) return null;
-  return <section className="method-section"><h2>{title}</h2><div className="indicator-grid">{Object.entries(indicators).map(([id, item]) => <article key={id}><strong>{labels[id] ?? id} · {formatScore(item.score)}</strong><p>{item.rationale}</p>{item.evidence?.length ? item.evidence.map((ref) => { const evidence = evidenceById.get(ref); return evidence ? <EvidenceDisclosure key={`${id}-${ref}`} evidence={evidence} /> : <span className="invalid-reference" key={`${id}-${ref}`}>引用 {ref} 无法定位</span>; }) : <small>未检出可定位支持证据</small>}</article>)}</div></section>;
+function Facts({ title, facts, empty }: { title: string; facts: ReportFact[]; empty: string }) {
+  const groups = facts.reduce<Record<string, ReportFact[]>>((all, fact) => { (all[fact.fact_type] ??= []).push(fact); return all; }, {});
+  return <section className="report-section" id="technology-facts"><div className="section-head"><p className="section-kicker">EVIDENCE RECORD</p><h2>{title}</h2><span>{facts.length} 条</span></div>{facts.length === 0 ? <p className="empty-state">{empty}</p> : Object.entries(groups).map(([type, items]) => <div className="fact-group" key={type}><h3>{factTypeLabels[type] ?? type}<small>{items.length}</small></h3><div className="fact-grid">{items.map((fact) => <FactCard key={fact.fact_id} fact={fact}/>)}</div></div>)}</section>;
 }
 
-function PartialResultPage({ modules, failures, runInfo, onReset }: { modules: Record<string, ModuleResult>; failures: Record<string, ModuleFailure>; runInfo: Record<string, any>; onReset: () => void }) {
-  const evidenceById = new Map<string, ReportEvidence>();
-  for (const module of Object.values(modules)) for (const item of module.analysis?.evidence ?? module.result?.evidence ?? []) evidenceById.set(item.evidence_id, item as ReportEvidence);
-  const tech = modules.technology?.analysis?.technology_indicators ?? modules.technology?.result?.technology_indicators ?? {};
-  const industry = modules.industry?.analysis?.industry_indicators ?? modules.industry?.result?.industry_indicators ?? {};
-  return <div className="report-shell"><AppHeader badge="部分模块结果"/><main id="top"><div className="report-actions"><strong>分析结果保留了成功模块</strong><button className="secondary-button" onClick={onReset}>返回</button></div><div className="inline-error">系统处理失败与企业资料证据不足分开显示。</div>{Object.entries(failures).map(([id, failure]) => <ModuleFailureNotice key={id} domain={id === "industry" ? "产业" : "技术"} failure={failure} />)}<DomainIndicatorPanel title="技术指标" indicators={tech} evidenceById={evidenceById}/><DomainIndicatorPanel title="产业指标" indicators={industry} evidenceById={evidenceById}/><details className="method-section"><summary>运行配置</summary><pre>{JSON.stringify(runInfo, null, 2)}</pre></details></main></div>;
+function TechnologyTimeline({ milestones }: { milestones: EvidenceFirstReport["technology_milestones"] }) {
+  const blocked = [...new Set(milestones.flatMap((m) => m.blocked_inferences))];
+  return <section className="report-section" id="technology-stage"><div className="section-head"><p className="section-kicker">TECHNOLOGY LIFECYCLE</p><h2>技术生命周期</h2><span>{milestones.length} 个里程碑</span></div>{milestones.length === 0 ? <p className="empty-state">当前没有可展示的技术生命周期节点。</p> : <ol className="timeline">{milestones.map((m, i) => <li className={`milestone ${statusClass[m.status] ?? "none"}`} key={`${m.template_id}-${m.milestone_id}`}><span className="timeline-index">{String(i + 1).padStart(2, "0")}</span><article><div className="milestone-meta"><span>{m.template_name}</span><strong>{m.status_label}</strong></div><h3>{m.milestone_name}</h3><p>{m.reason}</p>{(m.supporting_facts.length > 0 || m.contradicting_facts.length > 0 || m.blocked_inferences.length > 0) && <details><summary>支持事实、冲突事实与推断边界</summary>{m.supporting_facts.map((f) => <FactCard key={f.fact_id} fact={f}/>)}{m.contradicting_facts.map((f) => <FactCard key={f.fact_id} fact={f}/>)}{m.blocked_inferences.map((b) => <p className="blocked" key={b}>不能据此推出：{b}</p>)}</details>}</article></li>)}</ol>}{blocked.length > 0 && <aside className="blocked-panel"><h3>不能据此推出</h3>{blocked.map((item) => <p key={item}>• {item}</p>)}</aside>}</section>;
 }
 
-function ReportPage({
-  report,
-  sourceLabel,
-  modules = {},
-  moduleFailures = {},
-  runInfo = {},
-  requestMode = "rule_demo",
-  onReset,
-}: {
-  report: TechnologyReport;
-  sourceLabel: string;
-  modules?: Record<string, ModuleResult>;
-  moduleFailures?: Record<string, ModuleFailure>;
-  runInfo?: Record<string, any>;
-  requestMode?: string;
-  onReset: () => void;
-}) {
-  const isTechnologyReport = "score_explanation" in report.evaluation_details;
-  const techEvaluation = isTechnologyReport ? report.evaluation_details : (report.evaluation_details as any).technology as TechnologyReport["evaluation_details"] | undefined;
-  const explanations = (techEvaluation?.score_explanation ?? []).filter(
-    (item) => item.indicator_id,
-  );
-  const technologyIndicators = (modules.technology?.analysis?.technology_indicators ?? modules.technology?.result?.technology_indicators ?? (isTechnologyReport ? report.evaluation_details.indicators : {})) as Record<string, IndicatorAssessment>;
-  const industryIndicators = (modules.industry?.analysis?.industry_indicators ?? report.industry_analysis?.indicators ?? {}) as Record<string, IndicatorAssessment>;
-  const evidenceById = new Map(report.references.map((item) => [item.evidence_id, item]));
-  for (const module of Object.values(modules)) for (const item of module.analysis?.evidence ?? module.result?.evidence ?? []) evidenceById.set(item.evidence_id, item as ReportEvidence);
-  const scoredCount = (items: Record<string, IndicatorAssessment>) => Object.values(items).filter((item) => item?.score !== null && item?.score !== undefined).length;
-  const materialSuggestions: Record<string, string> = {
-    technical_autonomy: "技术架构、研发权属说明及外部技术依赖清单",
-    innovation_capability: "研发投入、研发人员和产品迭代记录",
-    intellectual_property: "专利/软著清单、权属证明及法律状态",
-    technical_maturity: "测试验证、客户试点、部署或交付材料",
-    market_potential: "市场研究、客户需求、订单或商业化资料",
-    industry_growth: "行业统计、市场趋势或增长预测来源",
-    competitive_position: "市场份额、客户应用、行业排名或竞品分析",
-    policy_environment: "适用政策文件、补贴依据及合规说明",
-  };
-  const allIndicators = [...Object.entries(technologyIndicators), ...Object.entries(industryIndicators)];
-  const missingIndicators = allIndicators.filter(([, item]) => item?.score === null || item?.score === undefined);
-
-  return (
-    <div className="report-shell">
-      <AppHeader badge={sourceLabel} />
-
-      <main id="top">
-        <div className="report-actions">
-          <span>{report.task_id ? `任务 ${report.task_id}` : "内置虚构样例"}</span>
-          <button className="secondary-button" type="button" onClick={onReset}>
-            分析其他企业
-          </button>
-        </div>
-
-        <section className="report-hero">
-          <div className="report-intro">
-            <p className="eyebrow">{runInfo.saved_result_replay ? "SAVED REAL MODEL RESULT · NO LIVE CALL" : requestMode === "real_model" ? "REAL MODEL ANALYSIS" : requestMode === "test_substitute" ? "TEST SUBSTITUTE RESULT" : "RULE DEMONSTRATION"}</p>
-            <h1>{report.title}</h1>
-            <p className="company-name">{report.enterprise_name}</p>
-            <p className="report-summary">{report.summary}</p>
-            {runInfo.saved_result_replay && <div className="report-boundary">历史保存结果回放 · 模型 {runInfo.saved_result_replay.model ?? "未知"} · {runInfo.saved_result_replay.run_date ?? "运行日期未知"} · 打开此报告不会调用模型。</div>}
-            <div className="report-boundary">
-              本报告基于已提供材料生成，仅用于辅助分析；所有结论均需人工复核。
-            </div>
-          </div>
-
-          <aside className="score-card" aria-label="技术综合评分">
-              <span>{report.overall_score !== undefined ? "综合参考分" : "技术参考分"}</span>
-            <div className="score-value">
-              {formatScore(report.overall_score ?? report.technology_score)}
-              <small>/ 100</small>
-            </div>
-            <div className="score-rule" />
-            <p>分数只覆盖已评分指标；技术 {scoredCount(technologyIndicators)}/{Object.keys(technologyIndicators).length || 4} 项，产业 {Object.keys(industryIndicators).length ? `${scoredCount(industryIndicators)}/${Object.keys(industryIndicators).length} 项` : "未运行"}。未评分项见下方清单。</p>
-          </aside>
-        </section>
-
-        <section className="score-section" aria-labelledby="score-title">
-          <div className="section-heading">
-            <div>
-              <p className="section-kicker">SCORE OVERVIEW</p>
-              <h2 id="score-title">技术与产业结果</h2>
-            </div>
-            <p>维度分和指标分分别来自评价结果与 Technology Agent 结构化输出。</p>
-          </div>
-
-          <div className="dimension-grid">
-            {Object.entries(report.dimension_scores ?? {}).map(([key, score]) => (
-              <article key={key}>
-                <span>{dimensionLabels[key] ?? key}</span>
-                <strong>{formatScore(score)}</strong>
-                <div className="score-track" aria-hidden="true">
-                  <i style={{ width: `${score ?? 0}%` }} />
-                </div>
-              </article>
-            ))}
-          </div>
-
-          <div className="indicator-panel">
-            <div className="indicator-header">
-              <span>指标</span>
-              <span>指标分</span>
-              <span>权重</span>
-              <span>加权得分</span>
-              <span>证据</span>
-            </div>
-            {explanations.map((item) => {
-              const indicator = technologyIndicators[
-                item.indicator_id ?? ""
-              ];
-              return (
-                <div className="indicator-row" key={item.indicator_id}>
-                  <div>
-                    <strong>
-                      {item.indicator_name ??
-                        indicatorLabels[item.indicator_id ?? ""] ??
-                        item.indicator_id}
-                    </strong>
-                    <small>{indicator?.rationale}</small>
-                  </div>
-                  <span>{formatScore(indicator?.score ?? null)}</span>
-                  <span>{item.weight === undefined ? "—" : `${item.weight * 100}%`}</span>
-                  <span>
-                    {item.weighted_score === undefined || item.weighted_score === null
-                      ? "—"
-                      : item.weighted_score.toFixed(2)}
-                  </span>
-                  <div className="evidence-tags">
-                    {indicator?.evidence.map((evidenceId) => (
-                      <a href={`#reference-${evidenceId}`} key={evidenceId}>
-                        {evidenceId}
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {requestMode === "real_model" && <DomainIndicatorPanel title="产业指标" indicators={industryIndicators} evidenceById={evidenceById} />}
-          <DomainIndicatorPanel title="技术指标证据" indicators={technologyIndicators} evidenceById={evidenceById} />
-          {(modules.technology?.status === "failed" || modules.industry?.status === "failed" || Object.keys(moduleFailures).length > 0) && <section role="alert"><div className="inline-error">系统处理失败与资料缺少证据分开记录。</div>{Object.entries(moduleFailures).map(([key, failure]) => <ModuleFailureNotice key={key} domain={key === "industry" ? "产业" : "技术"} failure={failure} />)}</section>}
-          {missingIndicators.length > 0 && <section className="method-section"><h2>待补充指标与材料建议</h2>{missingIndicators.map(([id, item]) => <p key={id}><strong>{indicatorLabels[id] ?? id}</strong>：当前未检出可支持评分的证据。建议补充：{materialSuggestions[id] ?? "可核验的业务材料"}。已有材料：{item?.rationale ?? "系统未生成该指标判断"}</p>)}</section>}
-          <details className="method-section"><summary>运行配置与复现信息</summary><pre>{JSON.stringify({ requestMode, actualMode: runInfo.actual_mode, retrieval: runInfo.retrieval, sourceFingerprint: runInfo.source_fingerprint_sha256, model: runInfo.model_request_config }, null, 2)}</pre></details>
-        </section>
-
-        <div className="findings-grid">
-          <FindingSection
-            eyebrow="TECHNICAL STRENGTHS"
-            findings={report.strengths}
-            title="核心技术优势"
-            tone="positive"
-          />
-          <FindingSection
-            eyebrow="RISK FACTORS"
-            findings={report.risks}
-            title="风险因素"
-            tone="risk"
-          />
-        </div>
-
-        <section className="method-section" aria-labelledby="method-title">
-          <div className="section-heading">
-            <div>
-              <p className="section-kicker">EVALUATION TRACE</p>
-              <h2 id="method-title">评价依据</h2>
-            </div>
-            <p>完整保留指标版本、权重版本、计算公式及参与评分的证据编号。</p>
-          </div>
-          <div className="calculation-grid">
-            {explanations.map((item) => (
-              <article key={`calculation-${item.indicator_id}`}>
-                <span>{item.indicator_name}</span>
-                <strong>{item.calculation ?? item.reason ?? "未评分"}</strong>
-                <small>
-                  指标版本 {item.indicator_version ?? "—"} · 权重版本 {item.weight_version ?? "—"}
-                </small>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="reference-section" aria-labelledby="reference-title">
-          <div className="section-heading">
-            <div>
-              <p className="section-kicker">EVIDENCE INDEX</p>
-              <h2 id="reference-title">证据索引</h2>
-            </div>
-            <p>点击证据条目可查看来源文档、页码、原文片段和检索相关度。</p>
-          </div>
-          <div className="reference-list">
-            {report.references.map((evidence) => (
-              <div id={`reference-${evidence.evidence_id}`} key={evidence.evidence_id}>
-                <EvidenceDisclosure evidence={evidence} />
-              </div>
-            ))}
-          </div>
-        </section>
-      </main>
-
-      <footer className="site-footer">
-        <span>KeHeng · 科衡</span>
-        <span>AI 辅助分析不替代人工尽调与正式决策</span>
-      </footer>
-    </div>
-  );
+function EvidenceAssertions({ report }: { report: EvidenceFirstReport }) {
+  const a = report.evidence_assertions;
+  return <section className="report-section" id="assertions"><div className="section-head"><p className="section-kicker">ASSERTION REVIEW</p><h2>证据归一与冲突检查</h2></div><div className="stat-strip">{[["原子事实", a.atomic_fact_count], ["证据断言", a.assertion_count], ["单来源", a.single_source_count], ["多来源", a.multi_source_support_count], ["冲突", a.conflict_count]].map(([label, value]) => <div key={String(label)}><strong>{value}</strong><span>{label}</span></div>)}</div>{a.multi_source_support_count === 0 && <p className="quiet-note">当前没有形成可安全归并的跨来源同一断言；系统保留各来源事实，未为提高聚合率而强行合并。</p>}{a.representative_assertions.length > 0 && <div className="assertion-grid">{a.representative_assertions.map((item) => <article className="assertion-card" key={item.assertion_id}><div>{item.assertion_type} · {item.evidence_status}</div><p>{item.representative_fact.subject} · {item.representative_fact.predicate}：{item.representative_fact.object_value}</p><small>{item.grouping_method} · {item.member_fact_count} 条事实 · {item.supporting_source_count} 个来源</small><CitationDisclosure citation={item.representative_fact.evidence}/></article>)}</div>}</section>;
 }
 
-function UploadPage({
-  enterpriseName,
-  file,
-  phase,
-  taskId,
-  mode,
-  error,
-  onEnterpriseNameChange,
-  onModeChange,
-  onFileChange,
-  onSubmit,
-  onLoadSample,
-  onLoadSavedReplay,
-  replayAvailable,
-}: {
-  enterpriseName: string;
-  file: File | null;
-  phase: "idle" | "uploading" | "processing" | "error";
-  taskId: string | null;
-  mode: ProductMode;
-  error: string | null;
-  onEnterpriseNameChange: (value: string) => void;
-  onModeChange: (value: ProductMode) => void;
-  onFileChange: (file: File | null) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onLoadSample: () => void;
-  onLoadSavedReplay: () => void;
-  replayAvailable: boolean;
-}) {
-  const isBusy = phase === "uploading" || phase === "processing";
-  return (
-    <div className="upload-shell">
-      <AppHeader badge="技术评估工作台" />
-      <main className="upload-main" id="top">
-        <section className="upload-copy">
-          <p className="eyebrow">EVIDENCE-BOUND DUE DILIGENCE</p>
-          <h1>让技术价值判断<br />回到证据与规则</h1>
-          <p>
-            上传企业技术资料，科衡将依次完成文本解析、任务级知识检索、技术指标提取、
-            确定性评价与可解释报告生成。
-          </p>
-          <div className="workflow-line">
-            <span>PDF 解析</span><i />
-            <span>RAG 检索</span><i />
-            <span>指标提取</span><i />
-            <span>确定性评分</span>
-          </div>
-        </section>
-
-        <section className="upload-panel" aria-labelledby="upload-title">
-          <div>
-            <p className="section-kicker">CREATE ANALYSIS</p>
-            <h2 id="upload-title">创建技术评估任务</h2>
-          </div>
-          <form onSubmit={onSubmit}>
-            <fieldset className="mode-select"><legend>分析模式</legend><label><input type="radio" name="mode" checked={mode === "rule_demo"} disabled={isBusy} onChange={() => onModeChange("rule_demo")} />规则演示（无密钥，仅技术分析）</label><label><input type="radio" name="mode" checked={mode === "real_model"} disabled={isBusy} onChange={() => onModeChange("real_model")} />真实模型（技术 + 产业）</label><small>真实模型凭据只由后端读取；未配置时会明确提示，不会切回规则模式。</small></fieldset>
-            <label>
-              <span>企业名称</span>
-              <input
-                type="text"
-                maxLength={120}
-                placeholder="请输入待评估企业名称"
-                value={enterpriseName}
-                disabled={isBusy}
-                onChange={(event) => onEnterpriseNameChange(event.target.value)}
-              />
-            </label>
-            <label className="file-field">
-              <span>技术资料 PDF</span>
-              <input
-                type="file"
-                accept="application/pdf,.pdf"
-                disabled={isBusy}
-                onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
-              />
-              <strong>{file ? file.name : "选择一份文本型 PDF"}</strong>
-              <small>当前版本最大 20 MB，扫描件暂不支持 OCR。</small>
-            </label>
-            <button className="primary-button" type="submit" disabled={isBusy}>
-              {phase === "uploading"
-                ? "正在上传…"
-                : phase === "processing"
-                  ? "正在分析…"
-                  : mode === "real_model" ? "开始技术与产业分析" : "开始规则演示分析"}
-            </button>
-          </form>
-
-          {isBusy && (
-            <div className="task-status" role="status">
-              <span className="status-spinner" />
-              <div>
-                <strong>{phase === "uploading" ? "正在提交资料" : "正在构建证据链并生成报告"}</strong>
-                <small>{taskId ? `任务编号：${taskId}` : "请稍候，不要关闭页面"}</small>
-              </div>
-            </div>
-          )}
-          {error && <div className="inline-error" role="alert">{error}</div>}
-
-          <div className="sample-entry">
-            <span>暂时没有可上传资料？</span>
-            <button type="button" onClick={onLoadSample} disabled={isBusy}>
-              快速查看内置虚构样例
-            </button>
-            <a className="secondary-button" href="/api/analysis/demo-material">下载合成 PDF 后上传</a>
-          </div>
-          {replayAvailable && <div className="sample-entry replay-entry"><span>本机可选历史报告回放（仅读取已保存结果，不触发模型调用）</span><button type="button" onClick={onLoadSavedReplay} disabled={isBusy}>打开 NIO 已保存模型报告</button></div>}
-        </section>
-      </main>
-      <footer className="site-footer">
-        <span>KeHeng · 科衡</span>
-        <span>资料在本地任务空间处理，分析结论需人工复核</span>
-      </footer>
-    </div>
-  );
+function FinancialProfile({ report }: { report: EvidenceFirstReport }) {
+  const profile = report.financial_profile;
+  const shown = profile.dimensions.filter((d) => d.fact_count > 0);
+  return <section className="report-section" id="finance"><div className="section-head"><p className="section-kicker">BUSINESS & FINANCIAL FACTS</p><h2>经营与财务事实</h2><span>{profile.fact_count} 条事实 · {shown.length} 个维度</span></div>{profile.fact_count === 0 ? <p className="empty-state">当前未形成可展示的经营与财务事实。</p> : <div className="dimension-grid">{shown.map((dimension, i) => <details className="dimension-card" open={i < 4} key={dimension.dimension_id}><summary><span>{dimension.dimension_name}</span><small>{dimension.fact_count} 条事实</small></summary><div>{dimension.representative_facts.map((fact) => <FactCard key={fact.fact_id} fact={fact}/>)}</div></details>)}</div>}</section>;
 }
 
-async function responseError(response: Response): Promise<string> {
-  try {
-    const payload = await response.json() as {
-      detail?: string | { message?: string };
-    };
-    if (typeof payload.detail === "string") return payload.detail;
-    if (payload.detail?.message) return payload.detail.message;
-  } catch {
-    // Fall through to the stable HTTP message below.
-  }
-  return `请求失败：HTTP ${response.status}`;
+function TechnologyFinance({ report }: { report: EvidenceFirstReport }) {
+  const f = report.technology_finance_links;
+  return <section className="report-section" id="tech-finance"><div className="section-head"><p className="section-kicker">TECHNOLOGY × FINANCE</p><h2>技术—经营关联</h2></div><p className="section-intro">规则引擎根据已验证的技术阶段和经营事实，识别资金活动、风险关注及后续监测事项。</p><h3 className="subhead">适用规则 <small>{f.applicable_rules.length}</small></h3>{f.applicable_rules.length === 0 ? <p className="quiet-note">当前证据未满足已配置技术—金融映射规则的触发条件。</p> : <ul className="rule-list">{f.applicable_rules.map((rule) => <li key={rule.rule_id}><strong>{rule.rule_title}</strong><small>{rule.scenario_name ?? ""} · {rule.rule_id}</small></li>)}</ul>}<h3 className="subhead">资金活动关注</h3>{f.funding_activities.length === 0 ? <p className="empty-state">当前没有可展示的资金活动关注事项。</p> : f.funding_activities.map((activity, i) => <article className="observation" key={`${activity.scenario_id}-${i}`}><strong>{activity.status_label}</strong><p>{activity.activities.join("、")}</p><p>{activity.reason}</p><EvidenceBundleDisclosure bundle={activity.evidence}/></article>)}<h3 className="subhead">风险观察</h3>{f.risks.length === 0 ? <p className="quiet-note">当前规则未形成有证据支撑的技术—金融风险观察。</p> : f.risks.map((risk, i) => <article className="observation" key={`${risk.risk_theme}-${i}`}><strong>{risk.status_label} · {risk.risk_theme}</strong><p>{risk.reason}</p><EvidenceBundleDisclosure bundle={risk.evidence}/></article>)}<h3 className="subhead">后续监测</h3>{f.monitoring_nodes.length === 0 ? <p className="empty-state">当前没有配置后续监测节点。</p> : f.monitoring_nodes.map((node) => <article className="observation" key={node.node_id}><div className="milestone-meta"><strong>{node.name}</strong><span className={`status-pill ${statusClass[node.status] ?? "none"}`}>{node.status_label}</span></div><p>{node.status_explanation}</p><p>{node.reason}</p><small>建议后续获取：{node.required_evidence_types.join("、") || "—"}</small><EvidenceBundleDisclosure bundle={node.evidence}/></article>)}</section>;
 }
 
-const wait = (milliseconds: number) =>
-  new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+function InformationGaps({ report }: { report: EvidenceFirstReport }) {
+  const gaps = report.information_gaps;
+  return <section className="report-section" id="gaps"><div className="section-head"><p className="section-kicker">INFORMATION GAPS</p><h2>待补充与待核验信息</h2><span>{gaps.deduplicated_financial_dimension_count} 个需要补证的财务/经营维度</span></div>{gaps.financial_gaps.map((gap) => <article className="gap-card" key={gap.dimension_id}><h3>{gap.dimension_name}</h3><p>{gap.description}</p><p><strong>建议补充：</strong>{gap.requested_fields.join("、") || "待补充相关材料"}</p>{gap.source_rule_ids.length > 0 && <small>触发规则：{gap.source_rule_ids.join("、")}</small>}</article>)}<h3 className="subhead">技术证据缺口</h3>{gaps.semantic_gaps.length === 0 ? <p className="empty-state">当前没有单独列示的技术证据缺口。</p> : <ul>{gaps.semantic_gaps.map((gap) => <li key={gap}>{gap}</li>)}</ul>}</section>;
+}
+
+function SourceSummary({ report }: { report: EvidenceFirstReport }) {
+  const s = report.source_summary;
+  const weak = s.weak_web_count + s.snippet_only_count;
+  const quality = Object.entries(s.source_quality_distribution);
+  const max = Math.max(1, ...quality.map(([, n]) => n));
+  return <section className="report-section" id="sources"><div className="section-head"><p className="section-kicker">SOURCE PROVENANCE</p><h2>来源与方法</h2><span>{s.evidence_source_count} 个证据来源</span></div>{weak > s.evidence_source_count / 2 && <p className="source-warning">当前报告主要由普通网页或搜索摘要支撑，适合线索整理与初步尽调；关键判断仍需补充一方或权威材料。</p>}<div className="source-bars">{quality.map(([name, count]) => <div className="source-bar" key={name}><div><span>{qualityLabels[name] ?? name}</span><strong>{count}</strong></div><i><b style={{ width: `${count / max * 100}%` }}/></i></div>)}</div><p className="source-types">来源类型：{Object.entries(s.source_type_distribution).map(([type, count]) => `${type} ${count}`).join(" · ") || "暂无"}</p><details className="method-details"><summary>方法与证据边界</summary><p>{report.methodology.positioning}</p>{report.methodology.evidence_boundary.map((item) => <p key={item}>{item}</p>)}{report.methodology.warnings.map((item) => <p className="quiet-note" key={item}>{item}</p>)}<details><summary>技术版本信息</summary><p>报告版本 · {report.report_version} · 报告 ID · {report.report_id}</p><pre>{JSON.stringify({ processors: report.methodology.processor_versions, registries: report.methodology.registry_versions }, null, 2)}</pre></details></details><p className="generated-at">报告生成时间：{new Date(report.generated_at).toLocaleString("zh-CN")}</p></section>;
+}
+
+function ReportPage({ report, onReset, onRefresh, refreshing, refreshError }: { report: EvidenceFirstReport; onReset: () => void; onRefresh: () => void; refreshing: boolean; refreshError: string | null }) {
+  const facts = report.technology_profile.representative_facts;
+  const overview = report.company_overview;
+  return <div className="app-shell report-shell"><Header/><main><div className="report-actions"><span>V2 Evidence-First Report · {report.report_version}</span><div><button className="secondary-button" type="button" onClick={onRefresh} disabled={refreshing}>{refreshing ? "正在刷新…" : "刷新已保存报告"}</button><button className="secondary-button" type="button" onClick={onReset}>分析其他企业</button></div></div>{refreshError && <p className="inline-error" role="alert">{refreshError}</p>}<section className="report-hero"><div><p className="eyebrow">科技企业证据增强尽调报告</p><h1>{report.company_name}</h1><p className="company-name">{overview.primary_domain_names.join(" · ")}</p><div className="tag-row">{overview.selected_template_names.map((name) => <span key={name}>{name}</span>)}</div></div><div className="report-stats">{[[report.technology_profile.fact_count, "技术事实"], [report.financial_profile.fact_count, "财务事实"], [report.source_summary.evidence_source_count, "证据来源"], [report.technology_milestones.length, "技术里程碑"]].map(([value, label]) => <div key={String(label)}><strong>{value}</strong><span>{label}</span></div>)}</div></section><section className="company-overview report-section"><div><p className="section-kicker">COMPANY OVERVIEW</p><h2>企业概览</h2></div><dl><div><dt>规范名称</dt><dd>{overview.canonical_name}</dd></div><div><dt>别名</dt><dd>{overview.aliases.join("、") || "暂无"}</dd></div><div><dt>主体状态</dt><dd>{overview.resolution_status}</dd></div><div><dt>官方网站</dt><dd>{overview.official_website ? <a href={overview.official_website} target="_blank" rel="noreferrer">{overview.official_website} ↗</a> : "未完成强自证验证"}</dd></div><div><dt>领域</dt><dd>{overview.primary_domain_names.join("、") || "暂无"}</dd></div><div><dt>技术模板</dt><dd>{overview.selected_template_names.join("、") || "暂无"}</dd></div></dl>{!report.source_summary.official_website_verified && <p className="quiet-note">当前未取得企业官网的强自证来源，普通网页证据不会被提升为一方来源。</p>}</section><nav className="report-nav" aria-label="报告章节导航">{[["technology-stage", "技术阶段"], ["technology-facts", "技术证据"], ["finance", "经营财务"], ["tech-finance", "技术—经营"], ["gaps", "待补充"], ["sources", "来源"]].map(([id, label]) => <a href={`#${id}`} key={id}>{label}</a>)}</nav><TechnologyTimeline milestones={report.technology_milestones}/><Facts title="技术证据" facts={facts} empty="当前未抽取到满足证据边界的技术事实。"/><EvidenceAssertions report={report}/><FinancialProfile report={report}/><TechnologyFinance report={report}/><InformationGaps report={report}/><SourceSummary report={report}/></main><Footer/></div>;
+}
+
+function EntityNotResolved({ onReset }: { onReset: () => void }) { return <div className="app-shell"><Header/><main className="terminal-state"><p className="eyebrow">ENTITY RESOLUTION</p><h1>未能确认唯一企业主体</h1><p>当前公开检索结果不足以唯一确认企业身份，因此系统没有继续生成技术与经营判断。建议使用更完整的企业法定名称后重试。</p><button className="primary-button" type="button" onClick={onReset}>重新输入企业名称</button></main><Footer/></div>; }
+function FailedPage({ task, onReset }: { task: EvidenceAnalysisTaskResponse; onReset: () => void }) { return <div className="app-shell"><Header/><main className="terminal-state"><p className="eyebrow">ANALYSIS INTERRUPTED</p><h1>分析流程未完成</h1><p>{task.error?.message ?? "分析任务失败，请稍后重试。"}</p><details><summary>阶段、错误类别与代码</summary><p>阶段：{task.error?.stage ?? task.current_stage}</p><p>类别：{task.error?.category ?? "未提供"}</p><p>代码：{task.error?.code ?? "未提供"}</p></details><button className="primary-button" type="button" onClick={onReset}>重新输入企业名称</button></main><Footer/></div>; }
+const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
 function App() {
-  const [enterpriseName, setEnterpriseName] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [phase, setPhase] = useState<"idle" | "uploading" | "processing" | "error">("idle");
-  const [taskId, setTaskId] = useState<string | null>(null);
-  const [report, setReport] = useState<TechnologyReport | null>(null);
-  const [partialOnly, setPartialOnly] = useState(false);
-  const [modules, setModules] = useState<Record<string, ModuleResult>>({});
-  const [moduleFailures, setModuleFailures] = useState<Record<string, ModuleFailure>>({});
-  const [runInfo, setRunInfo] = useState<Record<string, any>>({});
-  const [mode, setMode] = useState<ProductMode>("rule_demo");
-  const [actualMode, setActualMode] = useState<string>("rule_demo");
-  const [reportSource, setReportSource] = useState("动态分析报告");
-  const [error, setError] = useState<string | null>(null);
-  const [replayAvailable, setReplayAvailable] = useState(false);
-
-  const reset = () => {
-    setEnterpriseName("");
-    setFile(null);
-    setPhase("idle");
-    setTaskId(null);
-    setReport(null);
-    setPartialOnly(false);
-    setModules({}); setModuleFailures({}); setRunInfo({});
-    setError(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const pollTask = async (id: string) => {
-    for (let attempt = 0; attempt < 120; attempt += 1) {
-      const response = await fetch(`${API_BASE_URL}/analysis/${id}`);
-      if (!response.ok) throw new Error(await responseError(response));
-      const task = await response.json() as AnalysisTaskResponse;
-      if (task.status === "completed" && task.report) {
-        setReport(task.report as TechnologyReport);
-        setModules(task.modules ?? {}); setModuleFailures(task.module_failures ?? {}); setRunInfo(task.run_info ?? {}); setActualMode(task.run_info?.actual_mode ?? task.request_mode);
-        setReportSource(task.result_status === "partial" ? "部分模块完成" : "动态分析报告");
-        return;
-      }
-      if ((task.status === "partial" || task.status === "failed") && task.report) {
-        setReport(task.report as TechnologyReport); setModules(task.modules ?? {}); setModuleFailures(task.module_failures ?? {}); setRunInfo(task.run_info ?? {}); setActualMode(task.run_info?.actual_mode ?? task.request_mode); setReportSource("部分模块完成"); return;
-      }
-      if ((task.status === "partial" || task.status === "failed") && (Object.keys(task.module_failures ?? {}).length > 0 || task.result_status === "failed")) {
-        setModules(task.modules ?? {}); setModuleFailures(task.module_failures ?? {}); setRunInfo(task.run_info ?? {}); setActualMode(task.run_info?.actual_mode ?? task.request_mode); setPartialOnly(true); setReportSource("模块处理失败"); return;
-      }
-      if (task.status === "failed") {
-        throw new Error(task.error?.message ?? "分析任务失败，请重试。");
-      }
+  const [name, setName] = useState(""); const [task, setTask] = useState<EvidenceAnalysisTaskResponse | null>(null);
+  const [report, setReport] = useState<EvidenceFirstReport | null>(null); const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null); const [refreshing, setRefreshing] = useState(false); const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [reportRequested, setReportRequested] = useState(false);
+  const reset = useCallback(() => { setName(""); setTask(null); setReport(null); setBusy(false); setReportRequested(false); setError(null); setRefreshError(null); history.replaceState(null, "", window.location.pathname); window.scrollTo({ top: 0, behavior: "smooth" }); }, []);
+  const loadCompanyReport = useCallback(async (id: string) => { setRefreshing(true); setRefreshError(null); try { setReport(await getEvidenceReport(id)); } catch (e) { setRefreshError(e instanceof Error ? e.message : "读取已保存报告失败。"); } finally { setRefreshing(false); } }, []);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("company_id");
+    if (id) { setReportRequested(true); void loadCompanyReport(id); }
+    else if (params.get("sample") === "1") void fetch("/evidence_report_sample.json").then((response) => {
+      if (!response.ok) throw new Error("合成报告样例不可用。");
+      return response.json() as Promise<EvidenceFirstReport>;
+    }).then(setReport).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "样例加载失败。"));
+  }, [loadCompanyReport]);
+  const poll = async (id: string) => {
+    for (let attempt = 0; attempt < 900; attempt += 1) {
+      const current = await getEvidenceAnalysis(id); setTask(current);
+      if (current.status === "completed" && current.result_status === "entity_not_resolved") { setBusy(false); return; }
+      if (current.status === "failed") { setBusy(false); return; }
+      if (current.status === "completed" && current.report) { setReport(current.report); setBusy(false); if (current.company_id) history.replaceState(null, "", `?company_id=${encodeURIComponent(current.company_id)}`); return; }
       await wait(1000);
     }
-    throw new Error("分析等待超时，请稍后使用任务编号重新查询。");
+    throw new Error("分析仍在进行，等待时间已达到上限。可稍后重试或重新打开已保存报告。");
   };
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError(null);
-    if (!enterpriseName.trim()) {
-      setPhase("error");
-      setError("请输入企业名称。");
-      return;
-    }
-    if (!file) {
-      setPhase("error");
-      setError("请选择 PDF 技术资料。");
-      return;
-    }
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
-      setPhase("error");
-      setError("仅支持 PDF 文件。");
-      return;
-    }
-
-    try {
-      setPhase("uploading");
-      const form = new FormData();
-      form.append("enterprise_name", enterpriseName.trim());
-      form.append("file", file);
-      form.append("analysis_mode", mode);
-      const response = await fetch(`${API_BASE_URL}/analysis/create`, {
-        method: "POST",
-        body: form,
-      });
-      if (!response.ok) throw new Error(await responseError(response));
-      const task = await response.json() as AnalysisCreateResponse;
-      setTaskId(task.task_id);
-      setActualMode(mode);
-      setPhase("processing");
-      await pollTask(task.task_id);
-    } catch (reason) {
-      setPhase("error");
-      setError(reason instanceof Error ? reason.message : "分析失败，请重试。");
-    }
-  };
-
-  const loadSample = async () => {
-    try {
-      setError(null);
-      setPhase("uploading");
-      const response = await fetch("/technology_report.json");
-      if (!response.ok) throw new Error(`样例加载失败：HTTP ${response.status}`);
-      const sample = await response.json() as TechnologyReport;
-      setReport(sample);
-      setModules({}); setModuleFailures({}); setRunInfo({ actual_mode: "rule_demo", retrieval: { retriever: "hash" } }); setActualMode("rule_demo");
-      setPartialOnly(false);
-      setReportSource("内置虚构样例 · 规则展示数据");
-      setPhase("idle");
-    } catch (reason) {
-      setPhase("error");
-      setError(reason instanceof Error ? reason.message : "样例加载失败。");
-    }
-  };
-
-  const loadSavedReplay = async () => {
-    try {
-      setError(null);
-      setPhase("uploading");
-      const response = await fetch(`${API_BASE_URL}/analysis/replays/iteration04-nio-hash`);
-      if (!response.ok) throw new Error(await responseError(response));
-      const saved = await response.json() as AnalysisTaskResponse;
-      if (!saved.report) throw new Error("保存的报告内容为空。");
-      setReport(saved.report);
-      setModules(saved.modules ?? {});
-      setModuleFailures(saved.module_failures ?? {});
-      setRunInfo(saved.run_info ?? {});
-      setActualMode("real_model");
-      setPartialOnly(false);
-      setReportSource("已保存真实模型结果 · 历史回放");
-      setPhase("idle");
-    } catch (reason) {
-      setPhase("error");
-      setError(reason instanceof Error ? reason.message : "读取保存报告失败。");
-    }
-  };
-
-  useEffect(() => {
-    void fetch(`${API_BASE_URL}/analysis/replays/iteration04-nio-hash/availability`)
-      .then((response) => response.ok ? response.json() as Promise<{ available: boolean }> : { available: false })
-      .then((result) => setReplayAvailable(Boolean(result.available)))
-      .catch(() => setReplayAvailable(false));
-    if (new URLSearchParams(window.location.search).get("replay") === "iteration04-nio-hash") {
-      void loadSavedReplay();
-    }
-  }, []);
-
-  if (report) {
-    return <ReportPage report={report} sourceLabel={reportSource} modules={modules} moduleFailures={moduleFailures} runInfo={runInfo} requestMode={actualMode} onReset={reset} />;
-  }
-  if (partialOnly) return <PartialResultPage modules={modules} failures={moduleFailures} runInfo={runInfo} onReset={reset} />;
-  return (
-    <UploadPage
-      enterpriseName={enterpriseName}
-      file={file}
-      phase={phase}
-      taskId={taskId}
-      mode={mode}
-      error={error}
-      onEnterpriseNameChange={setEnterpriseName}
-      onModeChange={setMode}
-      onFileChange={setFile}
-      onSubmit={submit}
-      onLoadSample={loadSample}
-      onLoadSavedReplay={loadSavedReplay}
-      replayAvailable={replayAvailable}
-    />
-  );
+  const submit = async (event: FormEvent) => { event.preventDefault(); setError(null); if (!name.trim()) { setError("请输入企业名称。"); return; } setBusy(true); setTask(null); setReport(null); try { const created = await createEvidenceAnalysis(name); await poll(created.task_id); } catch (e) { setBusy(false); setError(e instanceof Error ? e.message : "创建分析任务失败。"); } };
+  if (report) return <ReportPage report={report} onReset={reset} onRefresh={() => void loadCompanyReport(report.company_id)} refreshing={refreshing} refreshError={refreshError}/>;
+  if (reportRequested) return <div className="app-shell"><Header/><main className="terminal-state"><p className="eyebrow">PERSISTED REPORT</p><h1>{refreshError ? "报告暂不可用" : "正在读取已保存报告"}</h1>{refreshError ? <p role="alert">{refreshError}</p> : <p role="status">正在从知识库读取该企业的 V2 报告…</p>}<button className="secondary-button" type="button" onClick={reset}>返回首页</button></main><Footer/></div>;
+  if (task?.status === "completed" && task.result_status === "entity_not_resolved") return <EntityNotResolved onReset={reset}/>;
+  if (task?.status === "failed") return <FailedPage task={task} onReset={reset}/>;
+  if (task && busy) return <ProgressPage task={task} onReset={reset}/>;
+  return <StartPage name={name} onName={setName} onSubmit={(e) => void submit(e)} busy={busy} error={error}/>;
 }
 
 export default App;

@@ -1,0 +1,128 @@
+{
+  "report_id": "sample-report-synthetic-001",
+  "company_id": "synthetic-company-001",
+  "company_name": "示例星河智能技术有限公司",
+  "generated_at": "2026-09-30T08:00:00Z",
+  "report_version": "evidence-first-report.v1",
+  "company_overview": {
+    "canonical_name": "示例星河智能技术有限公司",
+    "aliases": ["星河智能"],
+    "resolution_status": "resolved",
+    "official_website": null,
+    "primary_domain_ids": ["synthetic_domain"],
+    "primary_domain_names": ["合成示例 · 智能制造"],
+    "selected_template_ids": ["synthetic_template"],
+    "selected_template_names": ["合成示例 · 研发与产品化"]
+  },
+  "technology_profile": {
+    "fact_count": 1,
+    "fact_type_distribution": {"product_launch": 1},
+    "strongest_evidence_quality_distribution": {"weak_web": 1},
+    "representative_facts": [{
+      "fact_id": "synthetic-tech-fact-001",
+      "fact_type": "product_launch",
+      "subject": "星河感知模组",
+      "predicate": "公开展示",
+      "object_value": "在合成样例新闻稿中作为研发样机展示",
+      "period": "2026",
+      "event_time": "2026-09-01T00:00:00Z",
+      "quantitative_value": null,
+      "quantitative_unit": null,
+      "source_quality": "weak_web",
+      "evidence": {
+        "citation_id": "synthetic-citation-001",
+        "source_id": "synthetic-source-001",
+        "source_type": "web",
+        "source_title": "合成样例来源：星河智能产品动态",
+        "source_url": "https://example.com/synthetic-xinghe-product",
+        "chunk_id": "synthetic-chunk-001",
+        "excerpt": "本合成示例描述：星河智能展示了一款用于实验验证的感知模组。此内容为虚构样例，不对应真实企业或事件。",
+        "page_number": null,
+        "paragraph_number": 2,
+        "locator_text": "产品动态 · 第 2 段",
+        "source_quality": "weak_web"
+      }
+    }],
+    "all_fact_ids": ["synthetic-tech-fact-001"]
+  },
+  "technology_milestones": [{
+    "template_id": "synthetic_template",
+    "template_name": "合成示例 · 研发与产品化",
+    "milestone_id": "prototype",
+    "milestone_name": "样机展示",
+    "status": "limited_support",
+    "status_label": "有限支持",
+    "reason": "单条普通网页线索描述了样机展示，尚不足以确认后续验证或交付状态。",
+    "supporting_facts": [],
+    "contradicting_facts": [],
+    "blocked_inferences": ["不能据样机展示直接推断已经完成客户验证或规模量产"]
+  }, {
+    "template_id": "synthetic_template",
+    "template_name": "合成示例 · 研发与产品化",
+    "milestone_id": "customer_validation",
+    "milestone_name": "客户验证",
+    "status": "no_evidence",
+    "status_label": "暂无证据",
+    "reason": "当前合成来源未提供可定位的客户验证材料。",
+    "supporting_facts": [], "contradicting_facts": [], "blocked_inferences": []
+  }],
+  "evidence_assertions": {
+    "atomic_fact_count": 1, "assertion_count": 1, "technology_assertion_count": 1,
+    "financial_assertion_count": 0, "single_source_count": 1, "multi_source_support_count": 0,
+    "conflict_count": 0, "compression_ratio": 1.0, "representative_assertions": []
+  },
+  "financial_profile": {
+    "fact_count": 1,
+    "dimension_distribution": {"operating_revenue": 1},
+    "source_quality_distribution": {"weak_web": 1},
+    "dimensions": [{
+      "dimension_id": "operating_revenue",
+      "dimension_name": "营业收入",
+      "fact_count": 1,
+      "representative_facts": [{
+        "fact_id": "synthetic-finance-fact-001",
+        "fact_type": "revenue_disclosure",
+        "subject": "示例星河智能技术有限公司",
+        "predicate": "披露合成年度营业收入",
+        "object_value": "人民币 120 万元（虚构演示数据）",
+        "period": "2025",
+        "event_time": null,
+        "quantitative_value": 120,
+        "quantitative_unit": "万元人民币",
+        "source_quality": "weak_web",
+        "evidence": {
+          "citation_id": "synthetic-citation-finance-001",
+          "source_id": "synthetic-source-finance-001",
+          "source_type": "web",
+          "source_title": "合成样例来源：年度经营摘要",
+          "source_url": "https://example.com/synthetic-xinghe-finance",
+          "chunk_id": "synthetic-finance-chunk-001",
+          "excerpt": "本合成示例记录：虚构企业 2025 年营业收入为人民币 120 万元。该数值仅用于界面展示，不对应真实企业。",
+          "page_number": null,
+          "paragraph_number": 1,
+          "locator_text": "年度经营摘要 · 第 1 段",
+          "source_quality": "weak_web"
+        }
+      }]
+    }],
+    "all_fact_ids": ["synthetic-finance-fact-001"]
+  },
+  "technology_finance_links": {"applicable_rules": [], "funding_activities": [], "risks": [], "monitoring_nodes": []},
+  "information_gaps": {
+    "total_gap_count": 1, "deduplicated_financial_dimension_count": 1,
+    "financial_gaps": [{"dimension_id": "customer_validation", "dimension_name": "客户验证", "description": "当前缺少可核验的客户试点或验收材料。", "requested_fields": ["试点主体", "验证阶段", "验收记录"], "source_rule_ids": []}],
+    "semantic_gaps": ["尚缺少可定位的样机测试与客户验证证据。"], "all_semantic_gaps": ["尚缺少可定位的样机测试与客户验证证据。"]
+  },
+  "source_summary": {
+    "evidence_source_count": 2, "source_type_distribution": {"web": 2}, "source_quality_distribution": {"weak_web": 2},
+    "first_party_count": 0, "authoritative_public_record_count": 0, "weak_web_count": 2,
+    "snippet_only_count": 0, "official_website_verified": false
+  },
+  "methodology": {
+    "positioning": "本文件为前端契约与展示用合成样例，不是实际企业分析。",
+    "evidence_boundary": ["事实仅来自合成示例来源。", "公开信息缺失不代表相关事项不存在。"],
+    "processor_versions": {"technology_semantic": "synthetic.v1"},
+    "registry_versions": {"technology_templates": "synthetic.v1"},
+    "warnings": ["所有企业、来源、事实和结论均为虚构演示数据。"]
+  }
+}

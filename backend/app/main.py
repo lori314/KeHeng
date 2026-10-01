@@ -14,7 +14,7 @@ def create_app() -> FastAPI:
     application = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
-        description="科衡智能尽调系统 v0.7 技术与产业价值评估闭环",
+        description="科衡科技企业证据增强智能尽调系统",
     )
     application.add_middleware(
         CORSMiddleware,

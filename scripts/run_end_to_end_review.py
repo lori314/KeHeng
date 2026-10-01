@@ -20,19 +20,15 @@ if str(BACKEND) not in sys.path:
 
 from app.core.config import Settings, get_settings  # noqa: E402
 from app.finance.registry import FinanceRegistry  # noqa: E402
-from app.finance.processor import TechnologyFinanceProcessor  # noqa: E402
 from app.knowledge.contracts import KnowledgeLayer  # noqa: E402
-from app.knowledge.assertions import EvidenceAssertionProcessor  # noqa: E402
-from app.knowledge.identity import company_for_name  # noqa: E402
 from app.knowledge.semantic.contracts import TechnologySemanticProfile  # noqa: E402
-from app.knowledge.semantic.processor import TechnologyKnowledgeProcessor  # noqa: E402
 from app.knowledge.semantic.extractor import source_quality  # noqa: E402
 from app.knowledge.shared_knowledge_base import SharedKnowledgeBase  # noqa: E402
-from app.llm import OpenAICompatibleStructuredModel  # noqa: E402
-from app.report_v2 import EvidenceFirstReportAssembler  # noqa: E402
-from app.research.orchestrator import IterativeResearchService  # noqa: E402
-from app.research.planner import RetrievalPlanner  # noqa: E402
-from app.research.tavily_provider import TavilySearchProvider  # noqa: E402
+from app.services.evidence_analysis_service import (  # noqa: E402
+    EvidenceAnalysisConfig,
+    EvidenceAnalysisService,
+    EvidenceAnalysisServiceError,
+)
 
 
 def missing_provider_categories(settings: Settings) -> list[str]:
@@ -701,95 +697,72 @@ async def execute_review(args: argparse.Namespace, settings: Settings, run_dir: 
         raise FileExistsError(f"Review output directory is not empty: {run_dir}")
     run_dir.mkdir(parents=True, exist_ok=True)
     knowledge_dir = run_dir / "knowledge"
-    knowledge_base = SharedKnowledgeBase(knowledge_dir)
     started_at = datetime.now(timezone.utc).isoformat()
-    run_meta = {
-        "run_id": run_id,
-        "status": "running",
-        "started_at": started_at,
-        "input_name": args.enterprise_name,
-        "llm_model": settings.llm_model,
-        "search_provider": settings.web_search_provider,
-        "search_depth": settings.tavily_search_depth,
-        "parameters": {
-            "max_rounds": args.max_rounds,
-            "max_queries_per_round": args.max_queries_per_round,
-            "max_results_per_query": args.max_results_per_query,
-        },
-    }
     review: dict[str, Any] = {
-        "run": run_meta,
-        "entity": {
-            "input_name": args.enterprise_name,
-            "canonical_name": None,
-            "aliases": [],
-            "official_website": None,
-            "resolution_status": "not_started",
-            "identity_evidence": {"count": 0, "urls": [], "trace": {}},
+        "run": {
+            "run_id": run_id, "status": "running", "started_at": started_at,
+            "input_name": args.enterprise_name, "llm_model": settings.llm_model,
+            "search_provider": settings.web_search_provider, "search_depth": settings.tavily_search_depth,
+            "parameters": {"max_rounds": args.max_rounds, "max_queries_per_round": args.max_queries_per_round, "max_results_per_query": args.max_results_per_query},
         },
-        "research": {},
-        "technology_semantic": None,
-        "technology_finance": None,
-        "evidence_assertions": None,
-        "quality_checks": {},
-        "design_findings": [],
-        "errors": [],
+        "entity": {"input_name": args.enterprise_name, "canonical_name": None, "aliases": [], "official_website": None, "resolution_status": "not_started", "identity_evidence": {"count": 0, "urls": [], "trace": {}}},
+        "research": {}, "technology_semantic": None, "technology_finance": None,
+        "evidence_assertions": None, "quality_checks": {}, "design_findings": [], "errors": [],
     }
-    company = None
-    research_service = None
-    semantic_processor = None
-    finance_processor = None
     inventory: dict[str, Any] = {"sources": [], "source_count": 0, "content_scope_chunk_counts": {}}
-    stage = "research"
-    try:
-        model = OpenAICompatibleStructuredModel(settings.llm_endpoint, settings.llm_model, settings.llm_api_key, timeout=settings.llm_timeout_seconds, enable_thinking=settings.llm_enable_thinking)
-        search = TavilySearchProvider(settings.tavily_api_key, search_depth=settings.tavily_search_depth, timeout=settings.web_search_timeout_seconds)
-        research_service = IterativeResearchService(RetrievalPlanner(model), search, knowledge_base)
-        result = await research_service.run(
-            args.enterprise_name,
+    service = EvidenceAnalysisService(
+        runtime_root=knowledge_dir,
+        settings=settings,
+        config=EvidenceAnalysisConfig(
             max_rounds=args.max_rounds,
             max_queries_per_round=args.max_queries_per_round,
             max_results_per_query=args.max_results_per_query,
-        )
-        research_data = result.model_dump(mode="json")
-        research_data["current_stage"] = research_service.last_execution_trace.get(
-            "current_stage", "research_completed"
-        )
-        research_data["identity_results_count"] = research_service.last_execution_trace.get(
-            "identity_results_count", 0
-        )
-        research_data["execution_trace"] = dict(research_service.last_execution_trace)
-        research_data["official_host_fast_path_count"] = sum(
-            int((entry.relevance_diagnostics or {}).get("official_host_fast_path_count", 0))
-            for entry in result.trace
-        )
-        company_seed = company_for_name(args.enterprise_name)
-        company = knowledge_base.repository.get_company(company_seed.company_id or "")
-        inventory = build_source_inventory(knowledge_base, company_seed.company_id or "")
-        research_data["source_samples"] = _source_samples(inventory)
-        research_data["source_type_distribution"] = inventory["source_type_distribution"]
-        research_data["source_quality_distribution"] = inventory["source_quality_distribution"]
-        research_data["authoritative_or_first_party_ratio"] = inventory["authoritative_or_first_party_ratio"]
-        research_data["unknown_web_ratio"] = inventory["unknown_web_ratio"]
-        research_data["content_scope_chunk_counts"] = inventory["content_scope_chunk_counts"]
-        review["entity"] = _entity_review(args.enterprise_name, research_data, company)
-        review["research"] = research_data
+        ),
+    )
+    stage = "research"
+    try:
+        result = await service.analyze_company(args.enterprise_name)
+        details = service.last_execution_details
+        company = details.get("company")
+        kb = details.get("knowledge_base")
+        research_result = details.get("research_result")
+        research_trace = details.get("research_trace", {})
+        if research_result is not None:
+            research_data = research_result.model_dump(mode="json")
+            research_data["current_stage"] = research_trace.get("current_stage", "research_completed")
+            research_data["identity_results_count"] = research_trace.get("identity_results_count", 0)
+            research_data["execution_trace"] = research_trace
+            research_data["official_host_fast_path_count"] = sum(
+                int((entry.relevance_diagnostics or {}).get("official_host_fast_path_count", 0))
+                for entry in research_result.trace
+            )
+        else:
+            research_data = {}
+        company_id = result.company_id or getattr(company, "company_id", None)
+        if kb is not None and company_id:
+            inventory = build_source_inventory(kb, company_id)
+            research_data["source_samples"] = _source_samples(inventory)
+            research_data["source_type_distribution"] = inventory["source_type_distribution"]
+            research_data["source_quality_distribution"] = inventory["source_quality_distribution"]
+            research_data["authoritative_or_first_party_ratio"] = inventory["authoritative_or_first_party_ratio"]
+            research_data["unknown_web_ratio"] = inventory["unknown_web_ratio"]
+            research_data["content_scope_chunk_counts"] = inventory["content_scope_chunk_counts"]
+        if research_data:
+            review["entity"] = _entity_review(args.enterprise_name, research_data, company)
+            review["research"] = research_data
 
-        if result.entity_resolution_status == "resolved" and company is not None:
-            stage = "technology_semantic"
-            semantic_processor = TechnologyKnowledgeProcessor(model, knowledge_base)
-            semantic_profile = await semantic_processor.process_company(company.company_id or "")
-            review["semantic_execution"] = dict(semantic_processor.last_execution_trace)
-            review["technology_semantic"] = _technology_summary(semantic_profile, _source_url_by_chunk(knowledge_base, company.company_id or ""))
-            stage = "technology_finance"
-            finance_processor = TechnologyFinanceProcessor(model, knowledge_base)
-            finance_profile = await finance_processor.process_company(company.company_id or "")
-            review["finance_execution"] = dict(finance_processor.last_execution_trace)
-            review["technology_finance"] = _finance_summary(finance_profile, finance_processor.last_execution_trace)
-            stage = "evidence_assertions"
-            assertion_processor = EvidenceAssertionProcessor(knowledge_base)
-            assertion_profile = assertion_processor.process_company(company.company_id or "")
-            review["assertion_execution"] = dict(assertion_processor.last_execution_trace)
+        if result.result_status == "completed":
+            technology_profile = details["technology_profile"]
+            finance_profile = details["finance_profile"]
+            assertion_profile = details["assertion_profile"]
+            review["semantic_execution"] = details.get("semantic_trace", {})
+            review["technology_semantic"] = _technology_summary(
+                technology_profile,
+                _source_url_by_chunk(kb, result.company_id or ""),
+            )
+            review["finance_execution"] = details.get("finance_trace", {})
+            review["technology_finance"] = _finance_summary(finance_profile, details.get("finance_trace"))
+            review["assertion_execution"] = details.get("assertion_trace", {})
             source_distribution = Counter()
             strongest_distribution = Counter()
             member_quality_distribution = Counter()
@@ -798,14 +771,13 @@ async def execute_review(args: argparse.Namespace, settings: Settings, run_dir: 
                 strongest_distribution[assertion.strongest_source_quality] += 1
                 for quality_name, count in assertion.source_quality_distribution.items():
                     member_quality_distribution[quality_name] += count
-            atomic_count = len(semantic_profile.technology_facts) + len(finance_profile.financial_facts)
+            atomic_count = len(technology_profile.technology_facts) + len(finance_profile.financial_facts)
             assertion_count = len(assertion_profile.assertions)
             review["evidence_assertions"] = {
                 "profile": _dump(assertion_profile),
-                "atomic_technology_fact_count": len(semantic_profile.technology_facts),
+                "atomic_technology_fact_count": len(technology_profile.technology_facts),
                 "atomic_financial_fact_count": len(finance_profile.financial_facts),
-                "atomic_fact_count": atomic_count,
-                "assertion_count": assertion_count,
+                "atomic_fact_count": atomic_count, "assertion_count": assertion_count,
                 "technology_assertion_count": assertion_profile.technology_assertion_count,
                 "financial_assertion_count": assertion_profile.financial_assertion_count,
                 "single_source_count": assertion_profile.single_source_count,
@@ -816,15 +788,14 @@ async def execute_review(args: argparse.Namespace, settings: Settings, run_dir: 
                 "strongest_source_quality_distribution": dict(sorted(strongest_distribution.items())),
                 "member_source_quality_distribution": dict(sorted(member_quality_distribution.items())),
             }
-            stage = "evidence_first_report"
-            report = EvidenceFirstReportAssembler(knowledge_base.repository).build(company.company_id or "")
-            report_dir = run_dir / "evidence_first_report"
-            report_dir.mkdir(parents=True, exist_ok=True)
-            report_path = report_dir / "report.json"
+            report = result.report
+            if report is None or report.company_id != result.company_id:
+                raise ValueError("service_report_missing_or_mismatched")
+            report_path = run_dir / "evidence_first_report" / "report.json"
+            report_path.parent.mkdir(parents=True, exist_ok=True)
             report_path.write_text(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2), encoding="utf-8")
             review["evidence_first_report"] = {
-                "report_id": report.report_id,
-                "report_json": str(report_path),
+                "report_id": report.report_id, "report_json": str(report_path),
                 "summary": {
                     "milestone_count": len(report.technology_milestones),
                     "technology_facts_shown": len(report.technology_profile.representative_facts),
@@ -843,86 +814,82 @@ async def execute_review(args: argparse.Namespace, settings: Settings, run_dir: 
             review["run"]["status"] = "completed"
         else:
             review["run"]["status"] = "entity_not_resolved"
+        stage = str(details.get("stage", "complete"))
         review["quality_checks"] = run_quality_checks(
             (review.get("technology_semantic") or {}).get("profile"),
             (review.get("technology_finance") or {}).get("profile"),
-            inventory,
-            research_data,
-            getattr(company, "company_id", None),
-            review.get("entity"),
+            inventory, research_data, company_id, review.get("entity"),
         )
         review["design_findings"] = review["quality_checks"].get("design_findings", [])
-    except Exception as exc:  # include stage and class only, so provider secrets/body text cannot leak
-        if not review.get("research") and research_service is not None:
-            snapshot = dict(research_service.last_execution_trace)
-            if snapshot:
-                review["research"] = {
-                    "enterprise_name": snapshot.get("enterprise_name", args.enterprise_name),
-                    "queries_executed": list(snapshot.get("queries_executed", [])),
-                    "identity_queries": list(snapshot.get("identity_queries", [])),
-                    "identity_results_count": int(snapshot.get("identity_results_count", 0)),
-                    "sources_found": int(snapshot.get("sources_found", 0)),
-                    "sources_ingested": int(snapshot.get("sources_ingested", 0)),
-                    "rounds": int(snapshot.get("rounds_completed", 0)),
-                    "trace": [],
-                    "remaining_information_gaps": [],
-                    "stop_reason": "failed_before_research_completed",
-                    "current_stage": str(snapshot.get("current_stage", "unknown")),
-                    "search_provider": str(snapshot.get("search_provider", "unknown")),
-                }
-                if snapshot.get("current_stage") == "entity_validation_failed":
-                    review["entity"]["resolution_status"] = "validation_failed"
-                elif snapshot.get("current_stage") in {
-                    "entity_resolution_completed",
-                    "identity_relevance_gate_started",
-                    "relevance_gate_started",
-                    "source_ingestion_started",
-                    "source_ingestion_completed",
-                }:
-                    review["entity"]["resolution_status"] = "resolved"
-        if stage == "technology_semantic" and semantic_processor is not None:
-            review["semantic_execution"] = dict(semantic_processor.last_execution_trace)
-        if stage == "technology_finance" and finance_processor is not None:
-            review["finance_execution"] = dict(finance_processor.last_execution_trace)
-        if stage == "evidence_assertions" and "assertion_processor" in locals():
-            review["assertion_execution"] = dict(assertion_processor.last_execution_trace)
-        error_category = getattr(exc, "category", type(exc).__name__)
-        error_record: dict[str, Any] = {"stage": stage, "category": str(error_category)}
-        if stage == "technology_semantic" and semantic_processor is not None:
-            error_record["semantic_substage"] = semantic_processor.last_execution_trace.get(
-                "semantic_substage", "unknown"
-            )
-        if stage == "technology_finance" and finance_processor is not None:
-            error_record["finance_substage"] = finance_processor.last_execution_trace.get(
-                "finance_substage", "unknown"
-            )
-        diagnostics = getattr(exc, "diagnostics", None)
-        if isinstance(diagnostics, list) and diagnostics:
-            # StructuredModelError diagnostics are field-level, input-free and redacted.
-            error_record["diagnostics"] = [
-                {
-                    key: value
-                    for key, value in item.items()
-                    if key in {"attempt", "location", "type", "message"}
-                    and isinstance(value, (str, int))
-                }
-                for item in diagnostics
-                if isinstance(item, dict)
-            ]
+    except EvidenceAnalysisServiceError as exc:
+        details = service.last_execution_details
+        research_service = details.get("research_service")
+        snapshot = dict(details.get("research_trace") or getattr(research_service, "last_execution_trace", {}) or {})
+        research_result = details.get("research_result")
+        company = details.get("company")
+        kb = details.get("knowledge_base")
+        if research_result is not None:
+            research_data = research_result.model_dump(mode="json")
+            research_data["current_stage"] = snapshot.get("current_stage", "research_completed")
+            research_data["identity_results_count"] = snapshot.get("identity_results_count", 0)
+            research_data["execution_trace"] = snapshot
+            if kb is not None and getattr(company, "company_id", None):
+                inventory = build_source_inventory(kb, company.company_id)
+                research_data["source_samples"] = _source_samples(inventory)
+                research_data["source_type_distribution"] = inventory["source_type_distribution"]
+                research_data["source_quality_distribution"] = inventory["source_quality_distribution"]
+                research_data["authoritative_or_first_party_ratio"] = inventory["authoritative_or_first_party_ratio"]
+                research_data["unknown_web_ratio"] = inventory["unknown_web_ratio"]
+                research_data["content_scope_chunk_counts"] = inventory["content_scope_chunk_counts"]
+            review["research"] = research_data
+            review["entity"] = _entity_review(args.enterprise_name, research_data, company)
+        elif snapshot:
+            review["research"] = {
+                "enterprise_name": snapshot.get("enterprise_name", args.enterprise_name),
+                "queries_executed": list(snapshot.get("queries_executed", [])),
+                "identity_queries": list(snapshot.get("identity_queries", [])),
+                "identity_results_count": int(snapshot.get("identity_results_count", 0)),
+                "sources_found": int(snapshot.get("sources_found", 0)),
+                "sources_ingested": int(snapshot.get("sources_ingested", 0)),
+                "rounds": int(snapshot.get("rounds_completed", 0)), "trace": [],
+                "remaining_information_gaps": [], "stop_reason": "failed_before_research_completed",
+                "current_stage": str(snapshot.get("current_stage", "unknown")),
+                "search_provider": str(snapshot.get("search_provider", "unknown")),
+            }
+            if snapshot.get("current_stage") == "entity_validation_failed":
+                review["entity"]["resolution_status"] = "validation_failed"
+            elif snapshot.get("current_stage") in {"entity_resolution_completed", "identity_relevance_gate_started", "relevance_gate_started", "source_ingestion_started", "source_ingestion_completed"}:
+                review["entity"]["resolution_status"] = "resolved"
+        if "semantic_processor" in details:
+            review["semantic_execution"] = dict(details["semantic_processor"].last_execution_trace)
+        if "finance_processor" in details:
+            review["finance_execution"] = dict(details["finance_processor"].last_execution_trace)
+        if "assertion_processor" in details:
+            review["assertion_execution"] = dict(details["assertion_processor"].last_execution_trace)
+        stage = exc.stage
+        error_record: dict[str, Any] = {"stage": exc.stage, "category": exc.category or exc.code}
+        if exc.stage == "technology_semantic" and "semantic_processor" in details:
+            error_record["semantic_substage"] = details["semantic_processor"].last_execution_trace.get("semantic_substage", "unknown")
+        if exc.stage == "technology_finance" and "finance_processor" in details:
+            error_record["finance_substage"] = details["finance_processor"].last_execution_trace.get("finance_substage", "unknown")
+        if exc.diagnostics:
+            error_record["diagnostics"] = exc.diagnostics
         review["errors"].append(error_record)
         review["run"]["status"] = "failed"
+        company_id = getattr(company, "company_id", None)
         review["quality_checks"] = run_quality_checks(
             (review.get("technology_semantic") or {}).get("profile"),
             (review.get("technology_finance") or {}).get("profile"),
-            inventory,
-            review.get("research", {}),
-            getattr(company, "company_id", None),
-            review.get("entity"),
+            inventory, review.get("research", {}), company_id, review.get("entity"),
         )
+        review["design_findings"] = review["quality_checks"].get("design_findings", [])
+    except Exception as exc:
+        review["errors"].append({"stage": stage, "category": type(exc).__name__})
+        review["run"]["status"] = "failed"
+        review["quality_checks"] = run_quality_checks(None, None, inventory, review.get("research", {}), None, review.get("entity"))
         review["design_findings"] = review["quality_checks"].get("design_findings", [])
     finally:
         review["run"]["completed_at"] = datetime.now(timezone.utc).isoformat()
-        knowledge_base.close()
     (run_dir / "review.json").write_text(json.dumps(review, ensure_ascii=False, indent=2), encoding="utf-8")
     (run_dir / "review.md").write_text(render_review_markdown(review), encoding="utf-8")
     return review
