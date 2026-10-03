@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/keheng-logo.png" alt="科衡 KeHeng Logo" width="260">
+</p>
+
 # 科衡 KeHeng
 
 **面向科技金融尽调的证据增强 AI 辅助分析系统。**
