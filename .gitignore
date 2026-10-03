@@ -39,13 +39,24 @@ data/real_cases/**/sources/
 data/real_cases/human_review*.csv
 data/real_cases/iteration*_evidence_confirmations.json
 
-# LaTeX build intermediates (keep paper/main.pdf as the deliverable)
+# LaTeX build intermediates from the earlier local paper workflow
 paper/*.aux
 paper/*.bbl
 paper/*.blg
 paper/*.log
 paper/*.out
 paper/*.toc
+
+# Original manuscripts, template assets and earlier paper versions stay local.
+/imgs/
+/paper/
+/科衡_比赛重构版_v1_完整文稿.txt
+/paper_competition/
+/docs/paper_figures/
+/docs/paper_tables/
+/docs/paper_review*.md
+/docs/论文初稿.md
+/docs/答辩问题准备.md
 
 # Editors and operating systems
 .idea/
